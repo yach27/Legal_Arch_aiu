@@ -1,0 +1,184 @@
+import React, { useState, useEffect } from 'react';
+import { X, FileText, Search } from 'lucide-react';
+import { apiService } from '../../services/api';
+import { Document } from '../../types';
+
+interface DocumentSelectionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelectDocuments: (documents: Document[]) => void;
+}
+
+export const DocumentSelectionModal: React.FC<DocumentSelectionModalProps> = ({
+  isOpen,
+  onClose,
+  onSelectDocuments,
+}) => {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && !hasLoadedOnce) {
+      loadDocuments();
+    }
+  }, [isOpen]);
+
+  const loadDocuments = async () => {
+    try {
+      setLoading(true);
+      const docs = await apiService.getDocuments();
+      setDocuments(docs);
+      setHasLoadedOnce(true);
+    } catch (error) {
+      console.error('Failed to load documents:', error);
+      setHasLoadedOnce(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredDocuments = documents.filter(doc =>
+    doc.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const toggleDocumentSelection = (document: any) => {
+    setSelectedDocuments(prev => {
+      // Use doc_id since that's what the backend returns
+      const documentId = document.doc_id || document.id;
+      const isSelected = prev.some(doc => (doc.doc_id || doc.id) === documentId);
+      if (isSelected) {
+        return prev.filter(doc => (doc.doc_id || doc.id) !== documentId);
+      } else {
+        return [...prev, document];
+      }
+    });
+  };
+
+  const handleConfirm = () => {
+    onSelectDocuments(selectedDocuments);
+    setSelectedDocuments([]);
+    onClose();
+  };
+
+  const handleCancel = () => {
+    setSelectedDocuments([]);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-xl font-semibold text-gray-900">Select Documents</h2>
+          <button
+            onClick={handleCancel}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="p-6 border-b">
+          <div className="relative">
+            <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search documents..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* Document List */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mb-3"></div>
+              <p className="text-sm text-gray-500">Loading documents...</p>
+            </div>
+          ) : !hasLoadedOnce ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mb-3"></div>
+              <p className="text-sm text-gray-500">Loading documents...</p>
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="w-12 h-12 text-gray-300 mb-3" />
+              <p className="text-gray-600 font-medium">No documents found</p>
+              <p className="text-sm text-gray-400 mt-1">This folder is empty. Upload your first document to get started.</p>
+            </div>
+          ) : filteredDocuments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="w-12 h-12 text-gray-300 mb-3" />
+              <p className="text-gray-600 font-medium">No documents found matching your search.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredDocuments.map((document) => (
+                <div
+                  key={document.doc_id || document.id}
+                  className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all ${
+                    selectedDocuments.some(doc => (doc.doc_id || doc.id) === (document.doc_id || document.id))
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                  onClick={() => toggleDocumentSelection(document)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedDocuments.some(doc => (doc.doc_id || doc.id) === (document.doc_id || document.id))}
+                    onChange={(e) => {
+                      e.stopPropagation(); // Prevent event bubbling to parent div
+                      toggleDocumentSelection(document);
+                    }}
+                    className="mr-3 h-4 w-4 text-green-600 rounded focus:ring-green-500"
+                  />
+                  <FileText className="w-5 h-5 text-gray-500 mr-3 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium text-gray-900 truncate">
+                      {document.title}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {document.type} • {new Date(document.uploadDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t bg-gray-50">
+          <div className="text-sm text-gray-600">
+            {selectedDocuments.length} document{selectedDocuments.length !== 1 ? 's' : ''} selected
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleCancel}
+              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={selectedDocuments.length === 0}
+              className="px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            >
+              Attach {selectedDocuments.length > 0 && `(${selectedDocuments.length})`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

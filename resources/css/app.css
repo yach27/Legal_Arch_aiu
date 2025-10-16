@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    font-family: "Poppins", sans-serif;
+    background-color: white;
+}
+
+/* Enhanced Edge compatibility fixes */
+* {
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+/* Container and layout fixes for Edge */
+.container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+/* Spacing utilities for Edge */
+.p-4 { padding: 1rem !important; }
+.p-6 { padding: 1.5rem !important; }
+.p-8 { padding: 2rem !important; }
+.px-4 { padding-left: 1rem !important; padding-right: 1rem !important; }
+.px-6 { padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
+.py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+.py-6 { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
+.py-8 { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+
+.m-4 { margin: 1rem !important; }
+.mx-auto { margin-left: auto !important; margin-right: auto !important; }
+.mt-4 { margin-top: 1rem !important; }
+.mb-4 { margin-bottom: 1rem !important; }
+.mb-6 { margin-bottom: 1.5rem !important; }
+.mb-8 { margin-bottom: 2rem !important; }
+
+/* Grid system for Edge */
+.grid {
+    display: -ms-grid;
+    display: grid;
+}
+
+.grid-cols-1 {
+    -ms-grid-columns: 1fr;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.grid-cols-3 {
+    -ms-grid-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gap-4 {
+    gap: 1rem;
+}
+
+.gap-6 {
+    gap: 1.5rem;
+}
+
+/* Text utilities */
+.text-center { text-align: center !important; }
+.text-left { text-align: left !important; }
+.text-white { color: white !important; }
+.text-gray-600 { color: #6b7280 !important; }
+.text-green-700 { color: #047857 !important; }
+
+/* Background utilities */
+.bg-white { background-color: white !important; }
+.bg-green-700 { background-color: #047857 !important; }
+.bg-green-600 { background-color: #059669 !important; }
+
+/* Border radius */
+.rounded { border-radius: 0.25rem !important; }
+.rounded-lg { border-radius: 0.5rem !important; }
+
+/* Button styles */
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+/* Width utilities */
+.w-full { width: 100% !important; }
+.max-w-7xl { max-width: 80rem !important; }
+
+/* Edge compatibility fixes */
+.flex {
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+}
+
+.flex-col {
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: column;
+    flex-direction: column;
+}
+
+.flex-row {
+    -webkit-box-orient: horizontal;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: row;
+    flex-direction: row;
+}
+
+.items-center {
+    -webkit-box-align: center;
+    -ms-flex-align: center;
+    align-items: center;
+}
+
+.justify-end {
+    -webkit-box-pack: end;
+    -ms-flex-pack: end;
+    justify-content: flex-end;
+}
+
+.lg\:flex-row {
+    @media (min-width: 1024px) {
+        -webkit-box-orient: horizontal;
+        -webkit-box-direction: normal;
+        -ms-flex-direction: row;
+        flex-direction: row;
+    }
+}
+.active-link {
+    color: #eab308; /* Tailwind's text-yellow-500 */
+    text-decoration: underline;
+    text-underline-offset: 8px;
+}
+@keyframes wave {
+    0% {
+        transform: rotate(0deg);
+    }
+    10% {
+        transform: rotate(14deg);
+    }
+    20% {
+        transform: rotate(-8deg);
+    }
+    30% {
+        transform: rotate(14deg);
+    }
+    40% {
+        transform: rotate(-4deg);
+    }
+    50% {
+        transform: rotate(10deg);
+    }
+    60% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(0deg);
+    }
+}
+
+.animate-wave {
+    display: inline-block;
+    animation: wave 5s infinite;
+    transform-origin: 70% 70%;
+}
