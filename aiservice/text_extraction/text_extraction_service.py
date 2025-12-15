@@ -9,12 +9,10 @@ import docx
 import zipfile
 import xml.etree.ElementTree as ET
 
-# LayoutLMv3 and modern OCR imports
+# Modern OCR imports
 try:
-    from transformers import LayoutLMv3Processor, LayoutLMv3ForTokenClassification
     from pdf2image import convert_from_path
     from PIL import Image, ImageFilter, ImageEnhance
-    import torch
     import numpy as np
 
     # OpenCV import for advanced preprocessing
@@ -24,9 +22,16 @@ try:
     except ImportError:
         OPENCV_AVAILABLE = False
 
-    LAYOUTLM_AVAILABLE = True
-    logger = logging.getLogger(__name__)
-    logger.info("LayoutLMv3 libraries loaded successfully")
+    # PaddleOCR import (primary OCR engine)
+    try:
+        from paddleocr import PaddleOCR
+        PADDLEOCR_AVAILABLE = True
+        logger = logging.getLogger(__name__)
+        logger.info("PaddleOCR library loaded successfully")
+    except ImportError:
+        PADDLEOCR_AVAILABLE = False
+        logger = logging.getLogger(__name__)
+        logger.warning("PaddleOCR not available")
 
     # Fallback OCR imports
     try:
@@ -44,11 +49,11 @@ try:
         logger.warning("Tesseract not available as fallback")
 
 except ImportError as e:
-    LAYOUTLM_AVAILABLE = False
+    PADDLEOCR_AVAILABLE = False
     TESSERACT_AVAILABLE = False
     OPENCV_AVAILABLE = False
     logger = logging.getLogger(__name__)
-    logger.error(f"LayoutLMv3 libraries not available: {e}")
+    logger.error(f"OCR libraries not available: {e}")
     logger.error("Text extraction will be severely limited")
 
 # Configure logging
@@ -60,25 +65,20 @@ CORS(app)
 
 class TextExtractor:
     def __init__(self):
-        self.layoutlm_processor = None
-        self.layoutlm_model = None
+        self.paddle_ocr = None
 
-        if LAYOUTLM_AVAILABLE:
+        if PADDLEOCR_AVAILABLE:
             try:
-                logger.info("Initializing LayoutLMv3 model...")
+                logger.info("Initializing PaddleOCR model...")
 
-                # Path to your local model
-                model_path = r"D:\capstone\Legal_Arch_aiu\storage\app\models\layoutlmv3-base"
+                # Initialize PaddleOCR with English models
+                # Models auto-download from HuggingFace to ~/.paddlex/official_models/
+                self.paddle_ocr = PaddleOCR(lang='en')
 
-                # Load only processor for OCR functionality (we don't need the model for basic text extraction)
-                self.layoutlm_processor = LayoutLMv3Processor.from_pretrained(model_path)
-                # We'll use the processor's built-in OCR capability instead of the token classification model
-
-                logger.info("LayoutLMv3 model initialized successfully")
+                logger.info("PaddleOCR initialized successfully (models auto-downloaded from HuggingFace)")
             except Exception as e:
-                logger.error(f"Failed to initialize LayoutLMv3: {e}")
-                self.layoutlm_processor = None
-                self.layoutlm_model = None
+                logger.error(f"Failed to initialize PaddleOCR: {e}")
+                self.paddle_ocr = None
     
     def preprocess_image_for_ocr(self, image):
         """Preprocess image to improve OCR accuracy"""
@@ -137,13 +137,13 @@ class TextExtractor:
             logger.error(f"Image preprocessing failed: {str(e)}")
             return image
 
-    def extract_text_with_layoutlm(self, image):
-        """Extract text using LayoutLMv3 processor's OCR capabilities"""
-        if not self.layoutlm_processor:
+    def extract_text_with_paddleocr(self, image):
+        """Extract text using PaddleOCR (fast and accurate for stamps, handwriting, IDs)"""
+        if not self.paddle_ocr:
             return ""
 
         try:
-            logger.info("Using LayoutLMv3 processor for text extraction")
+            logger.info("Using PaddleOCR for text extraction")
 
             # Ensure image is PIL Image
             if not isinstance(image, Image.Image):
@@ -153,62 +153,53 @@ class TextExtractor:
             if image.mode != 'RGB':
                 image = image.convert('RGB')
 
-            # Use the processor's apply_ocr method to get words and bounding boxes
-            # This is the correct way to use LayoutLMv3 processor for OCR
-            encoding = self.layoutlm_processor(image, return_tensors="pt")
+            # Convert PIL Image to numpy array for PaddleOCR
+            img_array = np.array(image)
 
-            # The processor extracts words during preprocessing
-            # Access the words from the processor's internal OCR results
-            if hasattr(self.layoutlm_processor, 'apply_ocr'):
-                # Get OCR words directly
-                words, boxes = self.layoutlm_processor.apply_ocr(image)
-                if words:
-                    extracted_text = ' '.join(words)
-                    logger.info(f"LayoutLMv3 OCR extracted {len(words)} words")
-                    return extracted_text.strip()
+            # Run PaddleOCR (cls parameter removed in v3.x)
+            result = self.paddle_ocr.ocr(img_array)
 
-            # Fallback: try to get text from input tokens
-            if 'input_ids' in encoding:
-                input_ids = encoding['input_ids'][0]
-                # Decode the tokens back to text
-                decoded_text = self.layoutlm_processor.tokenizer.decode(
-                    input_ids,
-                    skip_special_tokens=True,
-                    clean_up_tokenization_spaces=True
-                )
-                if decoded_text and len(decoded_text.strip()) > 5:
-                    logger.info(f"LayoutLMv3 token decoding successful")
-                    return decoded_text.strip()
+            # Extract text from results
+            # PaddleOCR v3 format: result[0] = list of [bbox, (text, confidence)] or None if no text
+            extracted_text = []
+            if result and result[0]:
+                for line in result[0]:
+                    if line and len(line) > 1:
+                        # line = [bbox, (text, confidence)]
+                        text_info = line[1]
+                        if isinstance(text_info, (list, tuple)) and len(text_info) >= 2:
+                            text = text_info[0]
+                            confidence = text_info[1]
+                            # Very low threshold to catch faint handwriting, stamps, and IDs
+                            if confidence > 0.2:  # 20% - catches even faint blue ink
+                                extracted_text.append(text)
+                        elif isinstance(text_info, str):
+                            # Sometimes just returns string
+                            extracted_text.append(text_info)
 
-            logger.warning("LayoutLMv3 failed to extract meaningful text")
+            if extracted_text:
+                full_text = ' '.join(extracted_text)
+                logger.info(f"PaddleOCR extracted {len(extracted_text)} text regions")
+                return full_text.strip()
+
+            logger.warning("PaddleOCR found no text in image")
             return ""
 
         except Exception as e:
-            logger.error(f"LayoutLMv3 processor extraction failed: {str(e)}")
+            logger.error(f"PaddleOCR extraction failed: {str(e)}")
             logger.error(f"Error details: {traceback.format_exc()}")
             return ""
 
     def extract_text_with_ocr(self, file_path):
-        """Extract text from image-based PDF using LayoutLMv3 and fallback OCR"""
-        if not LAYOUTLM_AVAILABLE and not TESSERACT_AVAILABLE:
+        """Extract text from image-based PDF using PaddleOCR and fallback to Tesseract"""
+        if not PADDLEOCR_AVAILABLE and not TESSERACT_AVAILABLE:
             logger.warning("OCR libraries not available, cannot extract from image-based PDF")
             return ""
-            
+
         try:
-            # Check if Tesseract is available
-            try:
-                pytesseract.get_tesseract_version()
-            except Exception as e:
-                logger.error(f"Tesseract not found: {e}")
-                logger.error("Please install Tesseract OCR:")
-                logger.error("1. Download from: https://github.com/UB-Mannheim/tesseract/wiki")
-                logger.error("2. Install to C:\\Program Files\\Tesseract-OCR\\")
-                logger.error("3. Add to PATH or uncomment the tesseract_cmd line in the code")
-                return ""
-            
             logger.info(f"Attempting OCR extraction from: {file_path}")
-            
-            # Convert PDF to images - optimize for speed vs quality balance
+
+            # Convert PDF to images
             # Set poppler path for pdf2image
             poppler_path = r'C:\poppler\poppler-23.08.0\Library\bin'
             if not os.path.exists(poppler_path):
@@ -229,8 +220,9 @@ class TextExtractor:
             from PIL import Image
             Image.MAX_IMAGE_PIXELS = None  # Remove the limit
 
-            # Use lower DPI for maximum speed (still readable for most text)
-            dpi_setting = 100  # Faster processing - acceptable quality for most documents
+            # Balanced DPI for speed vs quality
+            # 150 DPI: Good balance - can read stamps/handwriting without being too slow
+            dpi_setting = 150  # Better for handwriting, stamps, and IDs
 
             if poppler_path:
                 logger.info(f"Using Poppler path: {poppler_path}")
@@ -238,73 +230,68 @@ class TextExtractor:
             else:
                 logger.warning("Poppler not found, trying without explicit path")
                 images = convert_from_path(file_path, dpi=dpi_setting, fmt='PNG')
-            
+
             extracted_text = ""
             total_pages = len(images)
 
-            # Limit pages for very long documents to speed up processing
-            max_pages = 50  # Process maximum 50 pages for speed
+            # Process all pages (limit to prevent excessive processing time)
+            max_pages = 30  # Process maximum 30 pages (approx 2-5 minutes with PaddleOCR)
             pages_to_process = min(total_pages, max_pages)
 
             if total_pages > max_pages:
-                logger.info(f"Document has {total_pages} pages, processing first {max_pages} for speed")
+                logger.warning(f"Document has {total_pages} pages, processing first {max_pages} pages only")
+
+            logger.info(f"Starting OCR processing of {pages_to_process} pages with PaddleOCR")
 
             for i, image in enumerate(images[:pages_to_process]):
-                logger.info(f"Processing page {i+1}/{total_pages} with optimized OCR")
+                logger.info(f"Processing page {i+1}/{pages_to_process}")
 
                 page_text = ""
 
-                # Try LayoutLMv3 first with timeout for faster processing
-                if self.layoutlm_processor:
+                # Try PaddleOCR first (fast and accurate)
+                if self.paddle_ocr:
                     try:
-                        import signal
-                        import time
-
-                        start_time = time.time()
-                        logger.info(f"Using LayoutLMv3 for page {i+1}")
-                        page_text = self.extract_text_with_layoutlm(image)
-
-                        # If LayoutLMv3 takes too long, skip to Tesseract
-                        if time.time() - start_time > 8:  # 8 second timeout for faster processing
-                            logger.warning(f"LayoutLMv3 taking too long, switching to Tesseract")
-                            page_text = ""
+                        logger.info(f"Using PaddleOCR for page {i+1}")
+                        page_text = self.extract_text_with_paddleocr(image)
 
                     except Exception as e:
-                        logger.warning(f"LayoutLMv3 failed quickly, using Tesseract: {e}")
+                        logger.warning(f"PaddleOCR failed, falling back to Tesseract: {e}")
                         page_text = ""
 
-                # If LayoutLMv3 fails or produces little text, fallback to optimized Tesseract
+                # Fallback to Tesseract if PaddleOCR fails or produces little text
                 if not page_text or len(page_text.strip()) < 20:
-                    logger.info(f"Using optimized Tesseract for page {i+1}")
-
                     if TESSERACT_AVAILABLE:
-                        # Minimal preprocessing for speed
+                        logger.info(f"Using Tesseract fallback for page {i+1}")
+
+                        # Preprocess image for better Tesseract results
                         if OPENCV_AVAILABLE:
                             processed_image = self.preprocess_image_for_ocr(image)
                         else:
-                            # Simple PIL preprocessing for speed
-                            processed_image = image.convert('L')  # Just convert to grayscale
+                            processed_image = image.convert('L')
 
-                        # Configure Tesseract for faster processing
-                        custom_config = r'--oem 3 --psm 6'  # Keep same config for consistency
+                        # Configure Tesseract for stamps and handwriting
+                        custom_config = r'--oem 3 --psm 11'  # Sparse text mode (better for stamps)
 
                         # Extract text using Tesseract
-                        tesseract_text = pytesseract.image_to_string(
-                            processed_image,
-                            config=custom_config,
-                            lang='eng'
-                        )
-
-                        page_text = tesseract_text
+                        try:
+                            tesseract_text = pytesseract.image_to_string(
+                                processed_image,
+                                config=custom_config,
+                                lang='eng'
+                            )
+                            page_text = tesseract_text
+                        except Exception as e:
+                            logger.error(f"Tesseract extraction failed: {e}")
+                            page_text = ""
 
                 # Clean and add page text
                 if page_text.strip():
                     extracted_text += f"\n--- Page {i+1} ---\n"
                     extracted_text += page_text.strip() + "\n"
-            
-            logger.info(f"OCR completed. Extracted {len(extracted_text)} characters from {total_pages} pages")
+
+            logger.info(f"OCR completed. Extracted {len(extracted_text)} characters from {pages_to_process} pages")
             return extracted_text.strip()
-            
+
         except Exception as e:
             logger.error(f"OCR extraction failed: {str(e)}")
             logger.error(traceback.format_exc())
@@ -343,8 +330,8 @@ class TextExtractor:
             
         except Exception as e:
             logger.error(f"PDF extraction failed: {str(e)}")
-            # If standard extraction fails completely, try LayoutLMv3/OCR as last resort
-            if LAYOUTLM_AVAILABLE or TESSERACT_AVAILABLE:
+            # If standard extraction fails completely, try PaddleOCR/Tesseract as last resort
+            if PADDLEOCR_AVAILABLE or TESSERACT_AVAILABLE:
                 logger.info("Standard extraction failed, attempting OCR as fallback")
                 return self.extract_text_with_ocr(file_path)
             return ""

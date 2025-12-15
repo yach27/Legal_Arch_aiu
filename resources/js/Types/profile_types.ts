@@ -9,6 +9,7 @@ export interface UserData {
     gender?: string;
     address?: string;
     profile_image?: string;
+    profile_picture?: string;
     loginTime?: string;
     [key: string]: any;
 }

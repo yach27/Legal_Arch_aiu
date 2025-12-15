@@ -1,43 +1,22 @@
 import axios from "axios";
-import React, { useState, useEffect } from "react";
-
-interface Category {
-  category_id: number;
-  category_name: string;
-}
+import React, { useState } from "react";
 
 interface AddFolderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate?: (folderName: string, categoryId: number) => void;
+  onCreate?: (folderName: string) => void;
 }
 
 const AddFolderModal: React.FC<AddFolderModalProps> = ({ isOpen, onClose, onCreate }) => {
   const [folderName, setFolderName] = useState("");
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  // Fetch categories when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      axios
-        .get("http://127.0.0.1:8000/api/categories", {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-          },
-        })
-        .then((res) => setCategories(res.data))
-        .catch(() => setError("Failed to load categories"));
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!folderName.trim() || !categoryId) return;
+    if (!folderName.trim()) return;
 
     setLoading(true);
     setError("");
@@ -51,7 +30,6 @@ const AddFolderModal: React.FC<AddFolderModalProps> = ({ isOpen, onClose, onCrea
           folder_path: `/uploads/${folderName}`, // backend will set actual path
           folder_type: "default",
           parent_folder_id: null,
-          category_id: categoryId,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -60,12 +38,11 @@ const AddFolderModal: React.FC<AddFolderModalProps> = ({ isOpen, onClose, onCrea
 
       // Clear form and close modal
       setFolderName("");
-      setCategoryId(null);
       onClose();
 
       // Call onCreate callback to refresh parent component
       if (onCreate) {
-        onCreate(response.data.folder.folder_name, response.data.folder.category_id);
+        onCreate(response.data.folder.folder_name);
       }
     } catch (err: any) {
       console.error(err);
@@ -111,24 +88,6 @@ const AddFolderModal: React.FC<AddFolderModalProps> = ({ isOpen, onClose, onCrea
               required
               disabled={loading}
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Category</label>
-            <select
-              value={categoryId ?? ""}
-              onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : null)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              disabled={loading || categories.length === 0}
-              required
-            >
-              <option value="">Select a category</option>
-              {categories.map((cat) => (
-                <option key={cat.category_id} value={cat.category_id}>
-                  {cat.category_name}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

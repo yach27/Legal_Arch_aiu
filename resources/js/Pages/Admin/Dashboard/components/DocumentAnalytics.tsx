@@ -8,30 +8,54 @@ interface DocumentAnalyticsProps {
 }
 
 export default function DocumentAnalytics({ categories }: DocumentAnalyticsProps) {
+  // Calculate total and percentages
+  const totalDocs = categories.reduce((sum, cat) => sum + cat.count, 0);
+  const categoriesWithPercentage = categories.map(cat => ({
+    ...cat,
+    percentage: totalDocs > 0 ? Math.round((cat.count / totalDocs) * 100) : 0
+  }));
+
   // Find the category with highest count for highlight
-  const topCategory = categories.reduce((max, category) =>
-    category.count > max.count ? category : max, categories[0]);
+  const topCategory = categoriesWithPercentage.length > 0
+    ? categoriesWithPercentage.reduce((max, category) =>
+        category.count > max.count ? category : max, categoriesWithPercentage[0])
+    : null;
+
+  if (!topCategory || categories.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="mb-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-1">DOCUMENT ANALYTICS</h3>
+          <p className="text-sm text-gray-500">Folder distribution overview</p>
+        </div>
+        <div className="text-center py-12 text-gray-500">
+          No documents to display
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <div className="mb-6">
         <h3 className="text-lg font-bold text-gray-800 mb-1">DOCUMENT ANALYTICS</h3>
-        <p className="text-sm text-gray-500">Comprehensive category distribution overview</p>
+        <p className="text-sm text-gray-500">Folder distribution overview</p>
       </div>
 
       <div className="h-64 mb-6">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={categories}
+              data={categoriesWithPercentage}
               cx="50%"
               cy="50%"
               innerRadius={50}
               outerRadius={95}
               paddingAngle={2}
               dataKey="count"
+              nameKey="folder_name"
             >
-              {categories.map((entry, index) => (
+              {categoriesWithPercentage.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
             </Pie>
@@ -40,7 +64,7 @@ export default function DocumentAnalytics({ categories }: DocumentAnalyticsProps
               height={50}
               formatter={(value, entry: any) => (
                 <span className="text-xs font-medium text-gray-600">
-                  {entry.payload.name} ({entry.payload.percentage}%)
+                  {entry.payload.folder_name} ({entry.payload.percentage}%)
                 </span>
               )}
             />
@@ -57,7 +81,7 @@ export default function DocumentAnalytics({ categories }: DocumentAnalyticsProps
               style={{ backgroundColor: topCategory.color }}
             />
             <div>
-              <div className="font-bold text-green-800 text-lg">{topCategory.name}</div>
+              <div className="font-bold text-green-800 text-lg">{topCategory.folder_name}</div>
               <div className="text-sm text-green-600">
                 {topCategory.count} documents
               </div>

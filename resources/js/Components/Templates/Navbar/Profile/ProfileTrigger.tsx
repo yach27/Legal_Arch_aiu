@@ -7,9 +7,19 @@ const ProfileTrigger: React.FC<ProfileTriggerProps> = ({
     isOpen,
     onClick,
 }) => {
-    // Dummy profile image URL - replace utility function for now
-    const profileImageUrl =
-        userData.avatar || `https://i.pravatar.cc/40?u=${userData.email}`;
+    // Use profile_picture if available, otherwise fall back to avatar or default
+    const profileImageUrl = userData.profile_picture
+        ? `/storage/${userData.profile_picture}`
+        : (userData.avatar || `https://i.pravatar.cc/40?u=${userData.email}`);
+
+    // Get initials for fallback display
+    const getInitials = () => {
+        const nameParts = userData.name.split(' ');
+        if (nameParts.length >= 2) {
+            return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+        }
+        return userData.name.substring(0, 2).toUpperCase();
+    };
 
     return (
         <div
@@ -17,15 +27,21 @@ const ProfileTrigger: React.FC<ProfileTriggerProps> = ({
             onClick={onClick}
         >
             {/* Profile Icon */}
-            <img
-                src={profileImageUrl}
-                alt={`${userData.name}'s Profile`}
-                className="w-9 h-9 rounded-full object-cover border-2 border-gray-200"
-                onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.src = `https://i.pravatar.cc/40?u=${userData.email}`;
-                }}
-            />
+            {userData.profile_picture ? (
+                <img
+                    src={profileImageUrl}
+                    alt={`${userData.name}'s Profile`}
+                    className="w-9 h-9 rounded-full object-cover border-2 border-gray-200"
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = `https://i.pravatar.cc/40?u=${userData.email}`;
+                    }}
+                />
+            ) : (
+                <div className="w-9 h-9 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 flex items-center justify-center text-white text-sm font-bold border-2 border-gray-200">
+                    {getInitials()}
+                </div>
+            )}
 
             <div className="hidden md:flex flex-col ml-2 text-gray-800">
                 <span className="font-semibold text-sm">{userData.name}</span>

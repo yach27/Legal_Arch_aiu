@@ -17,14 +17,25 @@ class User extends Authenticatable
     // The rest of your model...
     protected $fillable = [
         'lastname',
-        'firstname', 
+        'firstname',
         'middle_name',
         'email',
         'password',
+        'profile_picture',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
     ];
+
+    public function activityLogs()
+    {
+        return $this->hasMany(ActivityLog::class, 'user_id', 'user_id');
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(Document::class, 'created_by', 'user_id');
+    }
 }

@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Folder, Tag, Calendar, Building, User, Brain, CheckCircle, AlertCircle } from 'lucide-react';
+import { FileText, Folder, Calendar, User, Brain, CheckCircle, AlertCircle } from 'lucide-react';
 import { router } from '@inertiajs/react';
 
 interface DocumentData {
   doc_id?: number;
   fileName?: string;
   title?: string;
+  description?: string;
   analysis?: string;
   suggestedLocation?: string;
   suggestedCategory?: string;
   createdBy?: string;
   createdAt?: string;
   status?: string;
+  filePath?: string;
 }
 
 interface UploadedFile {
@@ -55,9 +57,9 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [processingStatus, setProcessingStatus] = useState<'idle' | 'analyzing' | 'processing' | 'completed' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
-  
-  // Use real file data or fallback to sample data
-  const [document] = useState<DocumentData>(documentData || {
+
+  // Use documentData from backend or fallback to sample data
+  const document: DocumentData = documentData || {
     fileName: uploadedFile?.name || "Section I.10.33 of 'de Finibus Bonorum et Malorum me Erta Delos Erosa Nyo Linda.pdf'",
     analysis: "This is a contract for IT services between University and TechCorp, expires Dec 2024, involves IT Department.",
     suggestedLocation: "Contracts > IT Department > Active",
@@ -65,124 +67,54 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
     createdBy: "System AI",
     createdAt: new Date().toISOString().split('T')[0],
     status: "Pending Review"
-  });
-
-  // Flask AI Bridge Service URL
-  const AI_BRIDGE_URL = 'http://127.0.0.1:5003';
+  };
 
   // Auto-analyze document when component loads
   useEffect(() => {
-    console.log('AIProcessing - useEffect triggered', { 
-      documentData, 
+    console.log('AIProcessing - useEffect triggered', {
+      documentData,
       hasDocId: !!documentData?.doc_id,
-      hasAnalysisData: !!analysisData 
+      hasAnalysisData: !!analysisData
     });
-    
+
+    // AI analysis is already done on the backend during upload
+    // No need to call ai_bridge service again from frontend
     if (documentData?.doc_id && !analysisData) {
-      console.log('AIProcessing - Starting analysis for doc_id:', documentData.doc_id);
-      analyzeDocument();
+      console.log('AIProcessing - Document already analyzed on backend during upload');
+      setProcessingStatus('completed');
     } else if (!documentData?.doc_id) {
       console.log('AIProcessing - No doc_id found in documentData:', documentData);
     }
   }, [documentData]);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : '',
-    };
-  };
-
-  const analyzeDocument = async () => {
-    console.log('analyzeDocument called with:', { documentData, docId: documentData?.doc_id });
-    
-    if (!documentData?.doc_id) {
-      console.error('analyzeDocument: No doc_id available');
-      return;
-    }
-    
-    setProcessingStatus('analyzing');
-    try {
-      const payload = { docId: documentData.doc_id };
-      console.log('Sending to AI Bridge:', { url: `${AI_BRIDGE_URL}/api/documents/analyze`, payload });
-      
-      const response = await fetch(`${AI_BRIDGE_URL}/api/documents/analyze`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-
-      const result = await response.json();
-      console.log('AI Bridge response:', result);
-      
-      if (result.success) {
-        setAnalysisData(result.analysis);
-        setProcessingStatus('completed');
-      } else {
-        setErrorMessage(result.message || 'Analysis failed');
-        setProcessingStatus('error');
-      }
-    } catch (error: any) {
-      console.error('Analysis error:', error);
-      setErrorMessage('Failed to connect to AI service');
-      setProcessingStatus('error');
-    }
-  };
-
-  const handleAcceptAI = async () => {
+  const handleAcceptAI = () => {
+    // Document is already processed with AI on the backend during upload
+    // Just show success and redirect
     setIsProcessing(true);
-    setProcessingStatus('processing');
 
-    try {
-      const response = await fetch(`${AI_BRIDGE_URL}/api/documents/process-ai`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          docId: documentData?.doc_id
-        })
-      });
+    // Show success toast
+    const successToast = window.document.createElement('div');
+    successToast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-4 rounded-lg shadow-xl z-50 flex items-center gap-3 animate-slide-in';
+    successToast.innerHTML = `
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      <div>
+        <div class="font-bold">File Uploaded Successfully!</div>
+        <div class="text-sm opacity-90">Document has been processed and saved</div>
+      </div>
+    `;
+    window.document.body.appendChild(successToast);
 
-      const result = await response.json();
+    // Remove toast after 3 seconds
+    setTimeout(() => {
+      successToast.remove();
+    }, 3000);
 
-      if (result.success) {
-        setProcessingStatus('completed');
-        setIsProcessing(false);
-
-        // Show success toast (simple and clean)
-          const successToast = window.document.createElement('div');
-        successToast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-4 rounded-lg shadow-xl z-50 flex items-center gap-3 animate-slide-in';
-        successToast.innerHTML = `
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-          <div>
-            <div class="font-bold">File Uploaded Successfully!</div>
-            <div class="text-sm opacity-90">Document has been processed and saved</div>
-          </div>
-        `;
-        window.document.body.appendChild(successToast);
-
-        // Remove toast after 3 seconds
-        setTimeout(() => {
-          successToast.remove();
-        }, 3000);
-
-        // Navigate back to document management page after a short delay
-        setTimeout(() => {
-          router.visit('/admin/documents');
-        }, 1500);
-      } else {
-        setErrorMessage(result.message || 'AI processing failed');
-        setProcessingStatus('error');
-        setIsProcessing(false);
-      }
-    } catch (error: any) {
-      console.error('Processing error:', error);
-      setErrorMessage('Failed to connect to AI processing service');
-      setProcessingStatus('error');
-      setIsProcessing(false);
-    }
+    // Navigate back to document management page after a short delay
+    setTimeout(() => {
+      router.visit('/admin/documents');
+    }, 1500);
   };
 
   const handleManualReview = () => {
@@ -223,19 +155,19 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
   };
 
   const displayAnalysis: AnalysisData = analysisData || {
-    suggested_title: document.fileName || "Legal Document",
-    suggested_description: document.analysis || "Document uploaded for AI processing",
-    ai_remarks: "Awaiting AI analysis...",
-    suggested_category: null,
-    suggested_folder: null,
+    suggested_title: document.title || document.fileName || "Legal Document",
+    suggested_description: document.description || document.analysis || "Document uploaded for AI processing",
+    ai_remarks: document.description || document.analysis || "AI analysis complete",
+    suggested_category: document.suggestedCategory ? { category_name: document.suggestedCategory } : null,
+    suggested_folder: document.suggestedLocation ? { folder_name: document.suggestedLocation } : null,
     category_confidence: 0,
     folder_confidence: 0,
-    analysis_summary: document.analysis || "Document ready for processing",
+    analysis_summary: document.description || document.analysis || "Document ready for processing",
     word_count: 0,
     character_count: 0,
     processing_details: {
-      model_used: 'legal-bert-base-uncased',
-      text_extracted: false,
+      model_used: 'AI Analysis Model',
+      text_extracted: true,
       categories_available: 0,
       folders_available: 0
     }
@@ -269,12 +201,6 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
               <p className="text-red-700 font-medium">Processing Error</p>
             </div>
             <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
-            <button 
-              onClick={analyzeDocument}
-              className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-            >
-              Try Again
-            </button>
           </div>
         )}
 
@@ -348,37 +274,17 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
           {/* Document Details */}
           <div className="px-8 py-6 space-y-6">
 
-            {/* AI-Suggested Category */}
-            <div>
-              <h4 className="text-base font-bold text-gray-800 mb-3 flex items-center">
-                <Tag className="w-5 h-5 text-gray-600 mr-2" />
-                AI-SUGGESTED CATEGORY:
-              </h4>
-              <div className="bg-green-50 px-4 py-3 rounded-lg border border-green-200">
-                {displayAnalysis.suggested_category ? (
-                  <div className="flex items-center justify-between">
-                    <p className="text-gray-700 font-medium">{displayAnalysis.suggested_category.category_name}</p>
-                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                      {displayAnalysis.category_confidence > 0 ? `${displayAnalysis.category_confidence}% match` : 'AI Selected'}
-                    </span>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 italic">Analyzing categories...</p>
-                )}
-              </div>
-            </div>
-
             {/* AI-Suggested Folder */}
             <div>
               <h4 className="text-base font-bold text-gray-800 mb-3 flex items-center">
                 <Folder className="w-5 h-5 text-gray-600 mr-2" />
                 AI-SUGGESTED FOLDER:
               </h4>
-              <div className="bg-yellow-50 px-4 py-3 rounded-lg border border-yellow-200">
+              <div className="bg-blue-50 px-4 py-3 rounded-lg border border-blue-200">
                 {displayAnalysis.suggested_folder ? (
                   <div className="flex items-center justify-between">
                     <p className="text-gray-700 font-medium">{displayAnalysis.suggested_folder.folder_name}</p>
-                    <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
                       {displayAnalysis.folder_confidence > 0 ? `${displayAnalysis.folder_confidence}% match` : 'AI Selected'}
                     </span>
                   </div>
@@ -400,14 +306,6 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
                   <div>
                     <span className="text-gray-600">Text Extracted:</span>
                     <span className="ml-2 font-medium">{displayAnalysis.processing_details.text_extracted ? 'Yes' : 'Pending'}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Categories Available:</span>
-                    <span className="ml-2 font-medium">{displayAnalysis.processing_details.categories_available}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Folders Available:</span>
-                    <span className="ml-2 font-medium">{displayAnalysis.processing_details.folders_available}</span>
                   </div>
                 </div>
               </div>
@@ -461,16 +359,6 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
             >
               DO A MANUAL REVIEW
             </button>
-            
-            {/* Retry Analysis Button */}
-            {processingStatus === 'error' && (
-              <button
-                onClick={analyzeDocument}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-3 rounded-xl text-sm font-medium tracking-wide transition-all duration-200"
-              >
-                RETRY AI ANALYSIS
-              </button>
-            )}
           </div>
         </div>
 

@@ -14,7 +14,18 @@ use App\Models\DocumentEmbedding;
 
 class AIAssistantController extends Controller
 {
-    private $aiServiceUrl = 'http://localhost:5000';
+    private $aiServiceUrl;
+    private $aiServiceType;
+    private $groqApiKey;
+    private $groqModel;
+
+    public function __construct()
+    {
+        $this->aiServiceUrl = env('AI_SERVICE_URL', 'http://localhost:5000');
+        $this->aiServiceType = env('AI_SERVICE_TYPE', 'local');
+        $this->groqApiKey = env('GROQ_API_KEY');
+        $this->groqModel = env('GROQ_MODEL', 'llama-3.3-70b-versatile');
+    }
 
     public function sendMessage(Request $request)
     {
@@ -104,68 +115,18 @@ class AIAssistantController extends Controller
                 ]);
             }
 
-            // First, check if AI service is available
-            Log::info('Checking AI service health...');
-            try {
-                $healthResponse = Http::timeout(5)->get("{$this->aiServiceUrl}/health");
-                
-                if (!$healthResponse->successful()) {
-                    throw new \Exception('AI service health check failed: ' . $healthResponse->status());
-                }
-                
-                $healthData = $healthResponse->json();
-                Log::info('AI service health check', $healthData);
-                
-                if (!$healthData['model_loaded']) {
-                    throw new \Exception('AI model not loaded in service');
-                }
-                
-            } catch (\Exception $healthError) {
-                Log::error('AI service unavailable', [
-                    'error' => $healthError->getMessage(),
-                    'service_url' => $this->aiServiceUrl
-                ]);
-                
-                return response()->json([
-                    'error' => 'AI service is currently unavailable. Please try again later.',
-                    'details' => 'Service health check failed'
-                ], 503);
-            }
-
-            // Call Python AI service with increased timeout and better error handling
-            Log::info('Sending request to AI service...');
-            
-            $response = Http::timeout(240) // Increased timeout to 4 minutes for document processing
-                ->retry(2, 1000) // Retry twice with 1 second delay
-                ->post("{$this->aiServiceUrl}/chat", [
-                    'message' => $request->message,
-                    'conversation_id' => $conversationId,
-                    'document_context' => $documentContext,
-                ]);
-
-            Log::info('AI service response received', [
-                'status' => $response->status(),
-                'response_size' => strlen($response->body())
-            ]);
-
-            if (!$response->successful()) {
-                $errorBody = $response->body();
-                Log::error('AI service error response', [
-                    'status' => $response->status(),
-                    'body' => $errorBody
-                ]);
-                
-                throw new \Exception('AI service error (HTTP ' . $response->status() . '): ' . $errorBody);
-            }
-
-            $data = $response->json();
-            
-            if (!isset($data['response'])) {
-                throw new \Exception('Invalid response format from AI service');
+            // Generate AI response based on service type
+            if ($this->aiServiceType === 'groq') {
+                Log::info('Using Groq API for chat...');
+                $aiResponse = $this->callGroqAPI($request->message, $conversationId, $documentContext);
+            } else {
+                // Use local AI service
+                Log::info('Using local AI service...');
+                $aiResponse = $this->callLocalAIService($request->message, $conversationId, $documentContext);
             }
 
             Log::info('AI response generated successfully', [
-                'response_length' => strlen($data['response'])
+                'response_length' => strlen($aiResponse)
             ]);
 
             // Get document metadata for response if documents were provided OR found via search
@@ -195,7 +156,7 @@ class AIAssistantController extends Controller
                 'user_id' => $userId,
                 'doc_id' => null,
                 'question' => $request->message,
-                'answer' => $data['response'],
+                'answer' => $aiResponse,
                 'status' => 'completed',
                 'document_references' => !empty($documentReferences) ? json_encode($documentReferences) : null,
                 'created_at' => $timestamp,
@@ -203,7 +164,7 @@ class AIAssistantController extends Controller
 
             return response()->json([
                 'id' => time(),
-                'content' => $data['response'],
+                'content' => $aiResponse,
                 'session_id' => $conversationId,
                 'type' => 'ai',
                 'timestamp' => $timestamp->toISOString(),
@@ -405,22 +366,22 @@ class AIAssistantController extends Controller
     private function retrieveDocumentContext(array $documentIds, int $userId): string
     {
         try {
-            // Verify user owns the documents
-            $ownedDocuments = Document::whereIn('doc_id', $documentIds)
-                ->where('created_by', $userId)
+            // Allow all users to access all active documents
+            $accessibleDocuments = Document::whereIn('doc_id', $documentIds)
+                ->where('status', 'active')
                 ->pluck('doc_id')
                 ->toArray();
 
-            if (empty($ownedDocuments)) {
-                Log::warning('No owned documents found for user', [
+            if (empty($accessibleDocuments)) {
+                Log::warning('No accessible documents found', [
                     'user_id' => $userId,
                     'requested_docs' => $documentIds
                 ]);
                 return '';
             }
 
-            // Get document embeddings/chunks for owned documents
-            $embeddings = DocumentEmbedding::whereIn('doc_id', $ownedDocuments)
+            // Get document embeddings/chunks for accessible documents
+            $embeddings = DocumentEmbedding::whereIn('doc_id', $accessibleDocuments)
                 ->with('document:doc_id,title')
                 ->orderBy('doc_id')
                 ->orderBy('chunk_index')
@@ -526,8 +487,8 @@ class AIAssistantController extends Controller
                 });
             }
 
-            // Search for documents matching the terms
-            $query = Document::where('created_by', $userId)
+            // Search for documents matching the terms (all active documents)
+            $query = Document::where('status', 'active')
                 ->with('folder:folder_id,folder_name,parent_folder_id');
 
             if (!empty($searchTerms)) {
@@ -541,9 +502,9 @@ class AIAssistantController extends Controller
                 $documents = $query->limit(5)->get();
             } else {
                 // If user asks "give me the link" without specifying which document,
-                // show their most recent documents
+                // show the most recent documents
                 Log::info('No specific search terms, showing recent documents');
-                $documents = Document::where('created_by', $userId)
+                $documents = Document::where('status', 'active')
                     ->with('folder:folder_id,folder_name,parent_folder_id')
                     ->orderBy('created_at', 'desc')
                     ->limit(5)
@@ -639,5 +600,186 @@ class AIAssistantController extends Controller
         }
 
         return implode(' > ', $path);
+    }
+
+    /**
+     * Call Groq API for chat completion with document context
+     */
+    private function callGroqAPI(string $message, $conversationId, string $documentContext = ''): string
+    {
+        try {
+            if (!$this->groqApiKey) {
+                throw new \Exception('Groq API key is not configured. Please set GROQ_API_KEY in .env file.');
+            }
+
+            // Get conversation history for context
+            $conversationMessages = [];
+            if ($conversationId && is_numeric($conversationId)) {
+                $history = AIHistory::where('conversation_id', $conversationId)
+                    ->where('user_id', Auth::id())
+                    ->orderBy('created_at', 'desc')
+                    ->limit(6) // Last 3 exchanges (6 messages)
+                    ->get()
+                    ->reverse();
+
+                foreach ($history as $item) {
+                    $conversationMessages[] = ['role' => 'user', 'content' => $item->question];
+                    $conversationMessages[] = ['role' => 'assistant', 'content' => $item->answer];
+                }
+            }
+
+            // Build messages array for Groq API
+            $messages = [
+                [
+                    'role' => 'system',
+                    'content' => 'You are a helpful AI assistant for a legal document management system. You provide clear, accurate, and professional responses. When document context is provided, you analyze and reference it in your responses.'
+                ]
+            ];
+
+            // Add conversation history
+            $messages = array_merge($messages, $conversationMessages);
+
+            // Add document context if available
+            $userMessage = $message;
+            if (!empty($documentContext)) {
+                $userMessage = $documentContext . "\n\nUser Question: " . $message;
+            }
+
+            // Add current user message
+            $messages[] = [
+                'role' => 'user',
+                'content' => $userMessage
+            ];
+
+            Log::info('Groq API request', [
+                'model' => $this->groqModel,
+                'message_count' => count($messages),
+                'has_document_context' => !empty($documentContext)
+            ]);
+
+            // Call Groq API
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->groqApiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(60)
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model' => $this->groqModel,
+                'messages' => $messages,
+                'temperature' => 0.7,
+                'max_tokens' => 2000,
+                'top_p' => 0.9,
+            ]);
+
+            if (!$response->successful()) {
+                $errorBody = $response->json();
+                Log::error('Groq API error', [
+                    'status' => $response->status(),
+                    'error' => $errorBody
+                ]);
+                throw new \Exception('Groq API error: ' . ($errorBody['error']['message'] ?? 'Unknown error'));
+            }
+
+            $data = $response->json();
+
+            if (!isset($data['choices'][0]['message']['content'])) {
+                throw new \Exception('Invalid response format from Groq API');
+            }
+
+            $aiResponse = $data['choices'][0]['message']['content'];
+
+            Log::info('Groq API response received', [
+                'response_length' => strlen($aiResponse),
+                'model' => $data['model'] ?? 'unknown',
+                'usage' => $data['usage'] ?? []
+            ]);
+
+            return $aiResponse;
+
+        } catch (\Exception $e) {
+            Log::error('Groq API call failed', [
+                'error' => $e->getMessage(),
+                'conversation_id' => $conversationId
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Call local AI service (Python Flask)
+     */
+    private function callLocalAIService(string $message, $conversationId, string $documentContext = ''): string
+    {
+        try {
+            // First, check if AI service is available
+            Log::info('Checking local AI service health...');
+
+            $healthResponse = Http::timeout(5)->get("{$this->aiServiceUrl}/health");
+
+            if (!$healthResponse->successful()) {
+                throw new \Exception('AI service health check failed: ' . $healthResponse->status());
+            }
+
+            $healthData = $healthResponse->json();
+            Log::info('AI service health check', $healthData);
+
+            if (!$healthData['model_loaded']) {
+                throw new \Exception('AI model not loaded in service');
+            }
+
+            // Build the complete message with document context
+            $completeMessage = $message;
+            if (!empty($documentContext)) {
+                $completeMessage = $documentContext . "\n\nUser Question: " . $message;
+            }
+
+            // Call Python AI service
+            Log::info('Sending request to local AI service...');
+
+            $response = Http::timeout(240)
+                ->retry(2, 1000)
+                ->post("{$this->aiServiceUrl}/chat", [
+                    'message' => $completeMessage,
+                    'conversation_id' => $conversationId,
+                ]);
+
+            Log::info('Local AI service response received', [
+                'status' => $response->status(),
+                'response_size' => strlen($response->body())
+            ]);
+
+            if (!$response->successful()) {
+                $errorBody = $response->body();
+                Log::error('Local AI service error response', [
+                    'status' => $response->status(),
+                    'body' => $errorBody
+                ]);
+
+                throw new \Exception('AI service error (HTTP ' . $response->status() . '): ' . $errorBody);
+            }
+
+            $data = $response->json();
+
+            if (!isset($data['response'])) {
+                throw new \Exception('Invalid response format from AI service');
+            }
+
+            return $data['response'];
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Local AI service connection failed', [
+                'error' => $e->getMessage(),
+                'service_url' => $this->aiServiceUrl
+            ]);
+
+            throw new \Exception('Cannot connect to AI service. Please ensure the AI server is running.');
+
+        } catch (\Exception $e) {
+            Log::error('Local AI service call failed', [
+                'error' => $e->getMessage(),
+                'conversation_id' => $conversationId
+            ]);
+            throw $e;
+        }
     }
 }

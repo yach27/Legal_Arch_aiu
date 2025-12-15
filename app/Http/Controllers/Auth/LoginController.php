@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Models\User;
+use App\Models\ActivityLog;
 
 class LoginController extends Controller
 {
@@ -70,6 +71,15 @@ class LoginController extends Controller
                 'token_length' => strlen($token),
             ]);
 
+            // Log login activity
+            ActivityLog::create([
+                'user_id' => $user->user_id,
+                'doc_id' => null,
+                'activity_type' => 'login',
+                'activity_time' => now(),
+                'activity_details' => 'User logged in',
+            ]);
+
             return response()->json([
                 'message' => 'Login successful',
                 'access_token' => $token,
@@ -96,12 +106,21 @@ class LoginController extends Controller
     {
         $user = $request->user();
         Log::info('Logout attempt', ['user_id' => $user->getKey()]);
-        
+
+        // Log logout activity
+        ActivityLog::create([
+            'user_id' => $user->user_id,
+            'doc_id' => null,
+            'activity_type' => 'logout',
+            'activity_time' => now(),
+            'activity_details' => 'User logged out',
+        ]);
+
         $deletedCount = $user->tokens()->count();
         $user->tokens()->delete();
-        
+
         Log::info('Logout successful', [
-            'user_id' => $user->getKey(), 
+            'user_id' => $user->getKey(),
             'tokens_deleted' => $deletedCount
         ]);
 

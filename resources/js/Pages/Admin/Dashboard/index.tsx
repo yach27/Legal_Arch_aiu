@@ -10,16 +10,17 @@ import StatsCard from "./components/StatsCard";
 import FileUploadUI from "../Document/components/FileUpload/FileUploadUI";
 import { usePage } from '@inertiajs/react';
 import { DashboardProps } from './types/dashboard';
-import {
-  documentCategories,
-  monthlyUploadData
-} from "./data/mockData";
 
 export default function AdminDashboard() {
   const { props } = usePage<DashboardProps>();
   const stats = props.stats || { totalDocuments: 0 };
   const recentFiles = props.recentFiles || [];
   const recentDownloads = props.recentDownloads || [];
+
+  // ✅ Use real-time data from backend
+  const monthlyUploads = props.monthlyUploads || [];
+  const documentAnalytics = props.documentAnalytics || [];
+
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   return (
@@ -51,7 +52,7 @@ export default function AdminDashboard() {
               />
 
               {/* Document Analytics below */}
-              <DocumentAnalytics categories={documentCategories} />
+              <DocumentAnalytics categories={documentAnalytics} />
             </div>
           </div>
 
@@ -59,7 +60,7 @@ export default function AdminDashboard() {
           <div className="xl:col-span-8">
             <div className="space-y-6">
               {/* Monthly Chart at top */}
-              <MonthlyUploads data={monthlyUploadData} />
+              <MonthlyUploads data={monthlyUploads} />
 
               {/* Recent Activity below */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

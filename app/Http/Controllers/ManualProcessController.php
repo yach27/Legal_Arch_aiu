@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\Document;
-use App\Models\Category;
 use App\Models\Folder;
+use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -97,24 +97,11 @@ class ManualProcessController extends Controller
     }
 
     /**
-     * Get categories for dropdown
-     */
-    public function getCategories()
-    {
-        $categories = Category::select('category_id', 'category_name')
-            ->orderBy('category_name')
-            ->get();
-
-        return response()->json($categories);
-    }
-
-    /**
      * Get folders for dropdown
      */
     public function getFolders()
     {
-        $folders = Folder::select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'category_id', 'parent_folder_id')
-            ->with('category:category_id,category_name')
+        $folders = Folder::select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'parent_folder_id')
             ->orderBy('folder_name')
             ->get();
 
@@ -122,7 +109,7 @@ class ManualProcessController extends Controller
     }
 
     /**
-     * Update document metadata
+     * Update document metadata - same fields as AI upload
      */
     public function updateDocument(Request $request)
     {
@@ -130,13 +117,12 @@ class ManualProcessController extends Controller
             $request->validate([
                 'doc_id' => 'required|integer|exists:documents,doc_id',
                 'title' => 'required|string|max:255',
-                'category_id' => 'required|exists:categories,category_id',
                 'folder_id' => 'nullable|exists:folders,folder_id',
                 'remarks' => 'nullable|string|max:1000',
             ]);
 
             $document = Document::find($request->doc_id);
-                
+
             if (!$document) {
                 return response()->json([
                     'success' => false,
@@ -153,17 +139,17 @@ class ManualProcessController extends Controller
                     try {
                         // Get the current file name
                         $fileName = basename($document->file_path);
-                        
+
                         // Since documents disk root is D:\legal_office, we need to get relative path
                         // folder_path is like "d:/legal_office/MOA", we need just "MOA"
                         $basePath = 'd:/legal_office/';
                         $newFolderPath = str_replace($basePath, '', $folder->folder_path);
                         $newFilePath = $newFolderPath . '/' . $fileName;
-                        
+
                         // Move the file from current location to new folder
                         if (Storage::disk('documents')->exists($document->file_path)) {
                             Storage::disk('documents')->move($document->file_path, $newFilePath);
-                            
+
                             \Log::info('File moved successfully', [
                                 'from' => $document->file_path,
                                 'to' => $newFilePath,
@@ -183,14 +169,43 @@ class ManualProcessController extends Controller
                 }
             }
 
+            // Track changes for activity log
+            $changes = [];
+            if ($document->title !== $request->title) {
+                $changes[] = "Title changed from '{$document->title}' to '{$request->title}'";
+            }
+            if ($document->folder_id !== $request->folder_id) {
+                $oldFolder = $document->folder_id ? Folder::find($document->folder_id)?->folder_name : 'None';
+                $newFolder = $request->folder_id ? Folder::find($request->folder_id)?->folder_name : 'None';
+                $changes[] = "Folder changed from '{$oldFolder}' to '{$newFolder}'";
+            }
+            if ($document->remarks !== $request->remarks) {
+                $changes[] = "Remarks updated";
+            }
+
             // Update document with new metadata and potentially new file path
+            // Same fields as AI upload: title, folder_id, remarks, file_path, status
             $document->update([
                 'title' => $request->title,
-                'category_id' => $request->category_id,
                 'folder_id' => $request->folder_id,
                 'remarks' => $request->remarks,
                 'file_path' => $newFilePath,
                 'status' => 'active',
+            ]);
+
+            // Log the activity
+            ActivityLog::create([
+                'user_id' => auth()->id(),
+                'doc_id' => $document->doc_id,
+                'activity_type' => 'update',
+                'activity_time' => now(),
+                'activity_details' => 'Manual update: ' . implode(', ', $changes)
+            ]);
+
+            \Log::info('Document updated via manual processing', [
+                'doc_id' => $document->doc_id,
+                'user_id' => auth()->id(),
+                'changes' => $changes
             ]);
 
             return response()->json([

@@ -184,10 +184,6 @@ class FolderService {
       errors.push('Invalid folder type');
     }
 
-    if (folder.category_id && folder.category_id <= 0) {
-      errors.push('Invalid category ID');
-    }
-
     return errors;
   }
 

@@ -171,3 +171,32 @@ body {
     animation: wave 5s infinite;
     transform-origin: 70% 70%;
 }
+
+/* Toast Notification Animations */
+@keyframes slide-in-right {
+    0% {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    100% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes progress {
+    0% {
+        width: 100%;
+    }
+    100% {
+        width: 0%;
+    }
+}
+
+.animate-slide-in-right {
+    animation: slide-in-right 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.animate-progress {
+    animation: progress linear forwards;
+}

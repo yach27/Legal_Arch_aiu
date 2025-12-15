@@ -10,15 +10,17 @@ export interface RecentFile {
 }
 
 export interface DocumentCategory {
-  name: string;
+  folder_id: number;
+  folder_name: string;
   count: number;
-  percentage: number;
   color: string;
 }
 
 export interface MonthlyData {
   month: string;
-  uploads: number;
+  year: string;
+  count: number;
+  label: string;
 }
 
 export interface DashboardProps {
@@ -27,5 +29,7 @@ export interface DashboardProps {
   };
   recentFiles: RecentFile[];
   recentDownloads: RecentFile[];
+  monthlyUploads: MonthlyData[];
+  documentAnalytics: DocumentCategory[];
   [key: string]: any;
 }

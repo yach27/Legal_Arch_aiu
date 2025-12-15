@@ -1,5 +1,5 @@
 import React from "react";
-import { Folder, FolderOpen, Calendar, User, Hash, Tag } from "lucide-react";
+import { Folder, FolderOpen, Calendar, User, Hash } from "lucide-react";
 import { Folder as FolderType } from "../../types/types";
 
 interface FolderPropertiesModalProps {
@@ -25,14 +25,6 @@ const FolderPropertiesModal: React.FC<FolderPropertiesModalProps> = ({
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   return (
@@ -120,37 +112,6 @@ const FolderPropertiesModal: React.FC<FolderPropertiesModalProps> = ({
                 </div>
               </div>
             </div>
-
-            {/* Category Information */}
-            {folder.category_id && (
-              <div className="space-y-4">
-                <h3 className="font-medium text-gray-900 flex items-center gap-2 text-lg">
-                  <Tag className="w-5 h-5" />
-                  Category
-                </h3>
-                
-                <div className="bg-gradient-to-br from-green-200 to-green-300 rounded-lg p-5 hover:from-green-300 hover:to-green-400 transition-all duration-300 hover:shadow-lg transform hover:scale-[1.02]">
-                  <div className="text-center">
-                    {folder.category ? (
-                      <>
-                        <div className="text-xl font-bold text-green-800 mb-1">
-                          {folder.category.category_name}
-                        </div>
-                        <label className="block text-sm font-medium text-gray-600">
-                          {folder.category.description || 'No description available'}
-                        </label>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold text-green-800 mb-1">#{folder.category_id}</div>
-                        <label className="block text-sm font-medium text-gray-600">Category ID</label>
-                        <label className="block text-xs text-gray-500 mt-1">Category details not loaded</label>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right Column */}

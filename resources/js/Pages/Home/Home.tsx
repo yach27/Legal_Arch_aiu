@@ -80,7 +80,7 @@ export default function Home() {
     return (
         <>
             {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
-            <div className="min-h-screen flex flex-col bg-gray-50">
+            <div className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 via-white to-green-50/20">
                 <Navbar
                     onLoginClick={handleLoginClick}
                     onRegisterClick={() => setShowRegister(true)}

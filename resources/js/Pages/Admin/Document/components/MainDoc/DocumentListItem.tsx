@@ -7,8 +7,7 @@ import DocumentViewer from '../DocumentViewer/DocumentViewer';
 import DocumentMenu from './DocumentMenu';
 
 const DocumentListItem: React.FC<DocumentListItemProps> = ({
-  document,
-  category
+  document
 }) => {
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -111,11 +110,6 @@ const DocumentListItem: React.FC<DocumentListItemProps> = ({
             <span className={`px-2 py-1 rounded-full text-xs flex-shrink-0 ${getStatusBadge(document.status)}`}>
               {document.status.charAt(0).toUpperCase() + document.status.slice(1)}
             </span>
-            {category && (
-              <span className="truncate" title={category.description}>
-                {category.category_name}
-              </span>
-            )}
             {document.remarks && (
               <span className="italic truncate max-w-xs text-gray-400" title={document.remarks}>
                 "{document.remarks}"

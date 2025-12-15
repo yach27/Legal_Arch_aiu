@@ -21,12 +21,10 @@ export interface Folder {
   parent_folder_id: number | null;
   created_by: number;
   folder_type: string;
-  category_id: number | null;
   created_at: string;
   updated_at: string;
   subfolders?: Folder[];
   creator?: User; // Include creator user details when loaded with relationship
-  category?: Category; // Include category details when loaded with relationship
 }
 
 export interface Document {
@@ -35,7 +33,6 @@ export interface Document {
   file_path: string;
   created_by: string;
   status: 'active' | 'draft' | 'archived' | 'pending';
-  category_id: number;
   folder_id: number | null;
   remarks: string;
   created_at: string;
@@ -94,7 +91,6 @@ export interface FolderCardProps {
 
 export interface DocumentListItemProps {
   document: Document;
-  category?: Category;
 }
 
 export interface BreadcrumbNavProps {
@@ -104,7 +100,7 @@ export interface BreadcrumbNavProps {
 }
 
 export interface DocumentFilters {
-  category_id?: number;
+  folder_id?: number;
   year?: number;
   search_term?: string;
 }

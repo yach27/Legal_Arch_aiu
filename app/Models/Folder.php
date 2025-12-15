@@ -16,20 +16,13 @@ class Folder extends Model
 
     protected $fillable = [
         'folder_name',
-        'folder_path', 
+        'folder_path',
         'folder_type',
-        'category_id',
         'parent_folder_id',
         'created_by'
     ];
 
     // Relationships
-    public function category()
-    {
-        // Specify both foreign key and owner key explicitly
-        return $this->belongsTo(Category::class, 'category_id', 'category_id');
-    }
-
     public function children()
     {
         return $this->hasMany(Folder::class, 'parent_folder_id');

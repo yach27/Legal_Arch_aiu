@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\Document;
+use App\Models\Folder;
+use Carbon\Carbon;
 
 class AdminController extends Controller
 {
@@ -16,11 +18,17 @@ class AdminController extends Controller
         // Get authenticated user - middleware ensures user is authenticated
         $user = $request->user('sanctum') ?? $request->user();
 
-        // Get document statistics - count active and processed documents
-        $totalDocuments = Document::whereIn('status', ['active'])->count();
+        // Get document statistics - count active documents
+        $totalDocuments = Document::where('status', 'active')->count();
+
+        // Get monthly upload statistics (last 12 months)
+        $monthlyUploads = $this->getMonthlyUploadData();
+
+        // Get document analytics by folder
+        $documentAnalytics = $this->getDocumentAnalytics();
 
         // Get recent files (recently made active within last 24 hours)
-        $recentFiles = Document::with(['user', 'category'])
+        $recentFiles = Document::with(['user', 'folder'])
             ->where('status', 'active')
             ->where('updated_at', '>=', now()->subDay())
             ->orderBy('updated_at', 'desc')
@@ -65,9 +73,91 @@ class AdminController extends Controller
             'stats' => [
                 'totalDocuments' => $totalDocuments,
             ],
+            'monthlyUploads' => $monthlyUploads,
+            'documentAnalytics' => $documentAnalytics,
             'recentFiles' => $recentFiles,
             'recentDownloads' => $recentDownloads,
         ]);
+    }
+
+    /**
+     * Get monthly upload data for the last 12 months
+     */
+    private function getMonthlyUploadData()
+    {
+        $monthlyData = [];
+        $now = Carbon::now();
+
+        // Get data for last 12 months
+        for ($i = 11; $i >= 0; $i--) {
+            $date = $now->copy()->subMonths($i);
+            $startOfMonth = $date->copy()->startOfMonth();
+            $endOfMonth = $date->copy()->endOfMonth();
+
+            $count = Document::where('status', 'active')
+                ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
+                ->count();
+
+            $monthlyData[] = [
+                'month' => $date->format('M'),
+                'year' => $date->format('Y'),
+                'count' => $count,
+                'label' => $date->format('M Y'),
+            ];
+        }
+
+        return $monthlyData;
+    }
+
+    /**
+     * Get document analytics grouped by folder
+     */
+    private function getDocumentAnalytics()
+    {
+        $folders = Folder::all();
+        $analytics = [];
+
+        foreach ($folders as $folder) {
+            $count = Document::where('status', 'active')
+                ->where('folder_id', $folder->folder_id)
+                ->count();
+
+            // Only include folders that have documents
+            if ($count > 0) {
+                $analytics[] = [
+                    'folder_id' => $folder->folder_id,
+                    'folder_name' => $folder->folder_name,
+                    'count' => $count,
+                    'color' => $this->getColorForFolder($folder->folder_id),
+                ];
+            }
+        }
+
+        // Sort by count descending
+        usort($analytics, function($a, $b) {
+            return $b['count'] - $a['count'];
+        });
+
+        return $analytics;
+    }
+
+    /**
+     * Get a consistent color for each folder
+     */
+    private function getColorForFolder($folderId)
+    {
+        $colors = [
+            '#16A34A', // green-600
+            '#059669', // emerald-600
+            '#0D9488', // teal-600
+            '#0891B2', // cyan-600
+            '#0284C7', // sky-600
+            '#2563EB', // blue-600
+            '#F59E0B', // amber-500
+            '#EF4444', // red-500
+        ];
+
+        return $colors[$folderId % count($colors)];
     }
 
     /**
@@ -105,6 +195,7 @@ class AdminController extends Controller
                 'lastname' => $user->lastname,
                 'middle_name' => $user->middle_name,
                 'email' => $user->email,
+                'profile_picture' => $user->profile_picture,
                 'created_at' => $user->created_at->toISOString(),
                 'updated_at' => $user->updated_at->toISOString(),
             ],

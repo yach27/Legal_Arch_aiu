@@ -10,7 +10,7 @@ const LeftBanner: React.FC<NavbarProps> = ({ onLoginClick }) => {
     const [text] = useTypewriter({
         words: [
             "Central Mindanao University",
-            "University Legal Counsel .",
+            "University Legal Counsel.",
             "Management System.",
         ],
         loop: true,
@@ -19,20 +19,20 @@ const LeftBanner: React.FC<NavbarProps> = ({ onLoginClick }) => {
         delaySpeed: 2000,
     });
     return (
-        <div className="w-full lg:w-1/2 flex flex-col gap-8 px-6 lg:px-12">
+        <div className="w-full lg:w-1/2 flex flex-col gap-8 px-6 lg:px-12 animate-fade-in">
             <div className="flex flex-col gap-6">
-                <h1 className="text-4xl lg:text-5xl font-extrabold text-[#003a18] leading-tight">
+                <h1 className="text-4xl lg:text-6xl font-extrabold bg-gradient-to-r from-green-800 via-green-600 to-green-700 bg-clip-text text-transparent leading-tight drop-shadow-lg">
                     Legal Document Management & Retrieval System
                 </h1>
-                <h2 className="text-3xl font-bold text-gray-500">
+                <h2 className="text-2xl lg:text-3xl font-bold text-green-700">
                     <span>{text}</span>
                     <Cursor
                         cursorBlinking={false}
                         cursorStyle="|"
-                        cursorColor="#ff014f"
+                        cursorColor="#15803d"
                     />
                 </h2>
-                <p className="text-base lg:text-lg text-gray-600 leading-relaxed">
+                <p className="text-base lg:text-lg text-gray-700 leading-relaxed">
                     A secure and efficient system designed for archiving and
                     retrieving legal reports and documents, ensuring organized
                     storage and quick access for legal offices.
@@ -45,9 +45,10 @@ const LeftBanner: React.FC<NavbarProps> = ({ onLoginClick }) => {
                         setShowMenu(false);
                         onLoginClick();
                     }}
-                    className="bg-[#003A18] text-white px-8 py-3 rounded-lg font-semibold hover:bg-[#ffc600] hover:text-black transition-colors"
+                    className="bg-gradient-to-r from-green-700 to-green-800 text-white px-8 py-4 rounded-xl font-bold hover:from-green-800 hover:to-green-900 hover:shadow-2xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 group"
                 >
                     GET STARTED
+                    <span className="group-hover:translate-x-1 transition-transform">→</span>
                 </button>
             </div>
         </div>

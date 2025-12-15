@@ -64,11 +64,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/documents/folders/bulk-counts', [DocumentController::class, 'getBulkFolderCounts']);
     Route::get('/documents/folder/{folderId}/count', [DocumentController::class, 'getFolderDocumentCount']);
     // Manual Processing routes
-    Route::get('/manual-process/categories', [ManualProcessController::class, 'getCategories']);
     Route::get('/manual-process/folders', [ManualProcessController::class, 'getFolders']);
-    Route::post('/manual-process/save', [ManualProcessController::class, 'saveDocument']);
     Route::post('/manual-process/update', [ManualProcessController::class, 'updateDocument']);
-    Route::get('/manual-process/document/{id}', [ManualProcessController::class, 'getDocument']);
     
     // Document routes for Flask AI Bridge integration
     Route::get('/documents/{id}', [DocumentController::class, 'show']); // Get single document

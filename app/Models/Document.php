@@ -17,13 +17,11 @@ class Document extends Model
         'file_path',
         'created_by',
         'status',
-        'category_id',
         'folder_id',
         'remarks',
     ];
 
     protected $casts = [
-        'category_id' => 'integer',
         'folder_id' => 'integer',
         'created_by' => 'integer',
     ];
@@ -31,11 +29,6 @@ class Document extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by', 'user_id');
-    }
-
-    public function category()
-    {
-        return $this->belongsTo(Category::class, 'category_id', 'category_id');
     }
 
     public function folder()

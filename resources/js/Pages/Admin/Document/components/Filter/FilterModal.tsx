@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { X, Filter } from "lucide-react";
-import { DocumentFilters, Category } from "../../types/types";
+import { DocumentFilters, Folder } from "../../types/types";
 
 interface FilterModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyFilters: (filters: DocumentFilters) => void;
   currentFilters: DocumentFilters;
-  categories: Category[];
+  folders: Folder[];
 }
 
 const FilterModal: React.FC<FilterModalProps> = ({
@@ -15,7 +15,7 @@ const FilterModal: React.FC<FilterModalProps> = ({
   onClose,
   onApplyFilters,
   currentFilters,
-  categories,
+  folders,
 }) => {
   const [filters, setFilters] = useState<DocumentFilters>(currentFilters);
 
@@ -72,25 +72,25 @@ const FilterModal: React.FC<FilterModalProps> = ({
 
         <div className="space-y-6">
 
-          {/* Category Filter */}
+          {/* Folder Filter */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Category
+              Folder
             </label>
             <select
-              value={filters.category_id || ''}
-              onChange={(e) => 
-                setFilters({ 
-                  ...filters, 
-                  category_id: e.target.value ? Number(e.target.value) : undefined 
+              value={filters.folder_id || ''}
+              onChange={(e) =>
+                setFilters({
+                  ...filters,
+                  folder_id: e.target.value ? Number(e.target.value) : undefined
                 })
               }
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
             >
-              <option value="">All Categories</option>
-              {categories.map((category) => (
-                <option key={category.category_id} value={category.category_id}>
-                  {category.category_name}
+              <option value="">All Folders</option>
+              {folders.map((folder) => (
+                <option key={folder.folder_id} value={folder.folder_id}>
+                  {folder.folder_name}
                 </option>
               ))}
             </select>

@@ -7,22 +7,38 @@ interface UserInfoHeaderProps {
 }
 
 const UserInfoHeader: React.FC<UserInfoHeaderProps> = ({ userData }) => {
-    // Dummy profile image URL - replace utility function for now
-    const profileImageUrl =
-        userData.avatar || `https://i.pravatar.cc/48?u=${userData.email}`;
+    // Use profile_picture if available, otherwise fall back to avatar or default
+    const profileImageUrl = userData.profile_picture
+        ? `/storage/${userData.profile_picture}`
+        : (userData.avatar || `https://i.pravatar.cc/48?u=${userData.email}`);
+
+    // Get initials for fallback display
+    const getInitials = () => {
+        const nameParts = userData.name.split(' ');
+        if (nameParts.length >= 2) {
+            return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+        }
+        return userData.name.substring(0, 2).toUpperCase();
+    };
 
     return (
         <div className="px-4 py-3 border-b border-gray-100 mb-2">
             <div className="flex items-center">
-                <img
-                    src={profileImageUrl}
-                    alt={`${userData.name}'s Profile`}
-                    className="w-12 h-12 rounded-full object-cover"
-                    onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = `https://i.pravatar.cc/48?u=${userData.email}`;
-                    }}
-                />
+                {userData.profile_picture ? (
+                    <img
+                        src={profileImageUrl}
+                        alt={`${userData.name}'s Profile`}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = `https://i.pravatar.cc/48?u=${userData.email}`;
+                        }}
+                    />
+                ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 flex items-center justify-center text-white text-base font-bold border-2 border-gray-200">
+                        {getInitials()}
+                    </div>
+                )}
                 <div className="ml-3 flex-1">
                     <p className="text-sm font-medium text-gray-900 truncate">
                         {userData.name}

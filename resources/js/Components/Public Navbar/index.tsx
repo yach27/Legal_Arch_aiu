@@ -20,11 +20,11 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
     const [showMenu, setShowMenu] = useState(false);
 
     return (
-        <header className="sticky top-0 z-50 w-full bg-white shadow-sm px-4 lg:px-10 py-5 flex justify-between items-center">
+        <header className="sticky top-0 z-50 w-full bg-gradient-to-r from-green-800 via-green-700 to-green-800 backdrop-blur-md shadow-lg px-4 lg:px-10 py-5 flex justify-between items-center">
             <div className="flex items-center gap-3">
                 {/* <img src={logo} alt="logo" className="w-10 h-10" /> */}
-                <h1 className="text-xl font-semibold text-gray-800">
-                    CMU Legal Archieving System
+                <h1 className="text-xl font-bold text-white drop-shadow-lg">
+                    CMU Legal Archiving System
                 </h1>
             </div>
 
@@ -38,7 +38,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
                             offset={-70}
                             duration={500}
                             activeClass="active-link"
-                            className="cursor-pointer text-black hover:text-[#057032] transition-colors duration-300"
+                            className="cursor-pointer text-white hover:text-yellow-400 transition-all duration-300 hover:scale-110 inline-block"
                         >
                             {item.title}
                         </Link>
@@ -50,7 +50,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
             <div className="hidden lg:flex items-center gap-4">
                 <button
                     onClick={onLoginClick}
-                    className="bg-[#003A18] text-white px-10 py-2 rounded-full hover:bg-[#ffc600] hover:text-black "
+                    className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-green-900 px-10 py-2.5 rounded-full font-bold hover:from-yellow-500 hover:to-yellow-600 hover:shadow-xl transform hover:scale-105 transition-all duration-300"
                 >
                     Login
                 </button>
@@ -60,7 +60,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
             <div className="lg:hidden">
                 <button
                     onClick={() => setShowMenu(!showMenu)}
-                    className="text-2xl text-green-800"
+                    className="text-2xl text-white hover:text-yellow-400 transition-colors"
                 >
                     <FiMenu />
                 </button>
@@ -68,12 +68,12 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
 
             {/* Mobile Sidebar Menu */}
             {showMenu && (
-                <div className="absolute top-0 left-0 w-[80%] h-screen bg-white p-6 shadow-lg z-50">
+                <div className="absolute top-0 left-0 w-[80%] h-screen bg-gradient-to-br from-green-800 to-green-900 p-6 shadow-2xl z-50">
                     <div className="flex justify-between items-center mb-6">
                         {/* <img src={logo} alt="logo" className="w-14" /> */}
                         <button
                             onClick={() => setShowMenu(false)}
-                            className="text-2xl text-gray-800"
+                            className="text-2xl text-white hover:text-yellow-400 transition-colors"
                         >
                             <MdClose />
                         </button>
@@ -88,7 +88,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
                                     smooth={true}
                                     offset={-70}
                                     duration={500}
-                                    className="text-gray-700 hover:text-green-800"
+                                    className="text-white hover:text-yellow-400 transition-colors"
                                     onClick={() => setShowMenu(false)}
                                 >
                                     {item.title}
@@ -103,7 +103,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
                                 setShowMenu(false);
                                 onLoginClick();
                             }}
-                            className="bg-green-900 text-white py-2 rounded-full"
+                            className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-green-900 py-3 rounded-full font-bold hover:from-yellow-500 hover:to-yellow-600 transform hover:scale-105 transition-all duration-300"
                         >
                             Login
                         </button>

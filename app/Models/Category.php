@@ -28,4 +28,9 @@ class Category extends Model
     {
         return $this->hasMany(Folder::class, 'category_id', 'category_id');
     }
+
+    public function documents()
+    {
+        return $this->hasMany(Document::class, 'category_id', 'category_id');
+    }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Document;
 use App\Models\DocumentEmbedding;
+use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -24,7 +25,7 @@ class DocumentController extends Controller
     {
         // Validate the uploaded file
         $request->validate([
-            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:10240', // 10MB max, document types only
+            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:51200', // 50MB max, document types only
             'folder_id' => 'nullable|integer',
             'title' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
@@ -32,8 +33,8 @@ class DocumentController extends Controller
         ]);
 
         try {
-            // Increase execution time for OCR processing
-            set_time_limit(150); // 2.5 minutes to handle OCR processing
+            // Increase execution time for OCR processing (especially for large PDFs with stamps/handwriting)
+            set_time_limit(600); // 10 minutes to handle large PDF OCR processing
 
             $file = $request->file('file');
 
@@ -54,7 +55,6 @@ class DocumentController extends Controller
                 'title' => $request->title ?? pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
                 'file_path' => $path,
                 'folder_id' => $request->folder_id,
-                'category_id' => $request->category_id ?? 1,
                 'remarks' => $request->description,
                 'status' => 'processing', // Set to processing since we auto-process
                 'created_by' => auth()->id(),
@@ -72,8 +72,87 @@ class DocumentController extends Controller
 
             // Process document content and generate embeddings automatically
             try {
+                $fullText = null;
+
+                // Extract text first
+                try {
+                    $fullPath = Storage::disk('documents')->path($document->file_path);
+                    $fullText = $this->extractTextFromDocument($fullPath, $file->getMimeType());
+                } catch (\Exception $extractError) {
+                    \Log::warning('Text extraction failed, proceeding without AI analysis', [
+                        'doc_id' => $document->doc_id,
+                        'error' => $extractError->getMessage()
+                    ]);
+                }
+
+                // Process document content and generate embeddings first
                 $this->processDocumentContent($document, $file->getMimeType());
+
+                // Then use AI to analyze and auto-fill metadata (Hybrid: Groq online / ai_bridge offline)
+                try {
+                    $aiServiceType = env('AI_SERVICE_TYPE', 'local');
+
+                    if ($aiServiceType === 'groq' && env('GROQ_API_KEY') && $fullText) {
+                        \Log::info('Using Groq AI for auto-fill (online)', ['doc_id' => $document->doc_id]);
+                        $aiAnalysis = $this->analyzeWithGroq($fullText, $document->title);
+                    } else {
+                        \Log::info('Using AI Bridge for auto-fill (offline)', ['doc_id' => $document->doc_id]);
+                        $aiAnalysis = $this->analyzeWithAIBridge($document->doc_id);
+                    }
+
+                    // Update document with AI suggestions
+                    if (!empty($aiAnalysis['title']) || !empty($aiAnalysis['description'])) {
+                        $updateData = [
+                            'title' => $aiAnalysis['title'] ?? $document->title,
+                            'remarks' => $aiAnalysis['description'] ?? $document->remarks,
+                        ];
+
+                        \Log::info('AI Analysis Results', [
+                            'doc_id' => $document->doc_id,
+                            'suggested_folder' => $aiAnalysis['suggested_folder'] ?? null,
+                            'category' => $aiAnalysis['category'] ?? null,
+                            'document_type' => $aiAnalysis['document_type'] ?? null
+                        ]);
+
+                        // Match folder intelligently based on AI suggestions and database folders
+                        $folder = $this->matchFolderFromAI($aiAnalysis);
+
+                        if ($folder) {
+                            $updateData['folder_id'] = $folder->folder_id;
+                            \Log::info('Folder matched successfully', [
+                                'doc_id' => $document->doc_id,
+                                'folder_id' => $folder->folder_id,
+                                'folder_name' => $folder->folder_name
+                            ]);
+                        } else {
+                            \Log::warning('No folder match found for AI suggestions', [
+                                'doc_id' => $document->doc_id,
+                                'ai_suggestions' => $aiAnalysis
+                            ]);
+                        }
+
+                        $document->update($updateData);
+                        \Log::info('Document metadata auto-filled', [
+                            'doc_id' => $document->doc_id,
+                            'updated_fields' => array_keys($updateData)
+                        ]);
+                    }
+                } catch (\Exception $aiError) {
+                    \Log::warning('AI auto-fill failed, document saved without AI metadata', [
+                        'doc_id' => $document->doc_id,
+                        'error' => $aiError->getMessage()
+                    ]);
+                }
                 \Log::info('Document processing completed', ['doc_id' => $document->doc_id, 'status' => 'active']);
+
+                // Log successful upload activity
+                ActivityLog::create([
+                    'user_id' => auth()->id(),
+                    'doc_id' => $document->doc_id,
+                    'activity_type' => 'upload',
+                    'activity_time' => now(),
+                    'activity_details' => 'Document uploaded and processed with AI: ' . $document->title
+                ]);
             } catch (\Exception $e) {
                 \Log::error('Document processing failed in upload', [
                     'doc_id' => $document->doc_id,
@@ -82,6 +161,15 @@ class DocumentController extends Controller
                 $document->update([
                     'status' => 'failed',
                     'remarks' => 'Processing timeout or error: ' . $e->getMessage()
+                ]);
+
+                // Log failed upload activity
+                ActivityLog::create([
+                    'user_id' => auth()->id(),
+                    'doc_id' => $document->doc_id,
+                    'activity_type' => 'upload',
+                    'activity_time' => now(),
+                    'activity_details' => 'Document upload failed: ' . $e->getMessage()
                 ]);
             }
 
@@ -175,7 +263,7 @@ class DocumentController extends Controller
             // Convert Windows paths to forward slashes for the HTTP request
             $normalizedPath = str_replace('\\', '/', $filePath);
             
-            $response = Http::timeout(120)->post($textExtractionUrl . '/extract/path', [
+            $response = Http::timeout(480)->post($textExtractionUrl . '/extract/path', [
                 'file_path' => $normalizedPath,
                 'mime_type' => $mimeType
             ]);
@@ -329,15 +417,11 @@ class DocumentController extends Controller
     // Get documents with filtering support
     public function getDocuments(Request $request)
     {
-        $query = Document::with(['category', 'folder']);
+        $query = Document::with(['folder']);
         
         // Apply filters
         if ($request->has('folder_id') && $request->folder_id !== null && $request->folder_id !== '') {
             $query->where('folder_id', $request->folder_id);
-        }
-
-        if ($request->has('category_id') && $request->category_id) {
-            $query->where('category_id', $request->category_id);
         }
 
         if ($request->has('year') && $request->year) {
@@ -347,8 +431,9 @@ class DocumentController extends Controller
         if ($request->has('search') && $request->search) {
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
-                $q->where('title', 'LIKE', '%' . $searchTerm . '%')
-                  ->orWhere('remarks', 'LIKE', '%' . $searchTerm . '%');
+                // Use LOWER() for case-insensitive search across all database engines
+                $q->whereRaw('LOWER(title) LIKE ?', ['%' . strtolower($searchTerm) . '%'])
+                  ->orWhereRaw('LOWER(remarks) LIKE ?', ['%' . strtolower($searchTerm) . '%']);
             });
         }
         
@@ -494,8 +579,7 @@ class DocumentController extends Controller
     public function getAIFolders()
     {
         try {
-            $folders = \App\Models\Folder::select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'category_id', 'created_by')
-                ->with(['category:category_id,category_name'])
+            $folders = \App\Models\Folder::select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'created_by')
                 ->orderBy('folder_name')
                 ->get()
                 ->toArray();
@@ -623,7 +707,7 @@ class DocumentController extends Controller
     public function show($id)
     {
         try {
-            $document = Document::with(['category', 'folder'])
+            $document = Document::with(['folder'])
                 ->where('doc_id', $id)
                 ->first();
 
@@ -641,7 +725,6 @@ class DocumentController extends Controller
                     'title' => $document->title,
                     'file_path' => $document->file_path,
                     'status' => $document->status,
-                    'category_id' => $document->category_id,
                     'folder_id' => $document->folder_id,
                     'created_by' => $document->created_by,
                     'created_at' => $document->created_at,
@@ -945,6 +1028,241 @@ class DocumentController extends Controller
             Log::error('Download logging failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Call AI Bridge service for document analysis (local, offline)
+     */
+    private function analyzeWithAIBridge(int $docId): array
+    {
+        try {
+            $aiBridgeUrl = env('AI_BRIDGE_URL', 'http://localhost:5003');
+
+            $response = Http::timeout(30)->post("{$aiBridgeUrl}/api/documents/analyze", [
+                'docId' => $docId
+            ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('AI Bridge error: HTTP ' . $response->status());
+            }
+
+            $data = $response->json();
+
+            if (!$data['success']) {
+                throw new \Exception($data['message'] ?? 'AI Bridge analysis failed');
+            }
+
+            return [
+                'title' => $data['suggested_title'] ?? null,
+                'description' => $data['suggested_description'] ?? null,
+            ];
+
+        } catch (\Exception $e) {
+            \Log::error('AI Bridge analysis failed', ['error' => $e->getMessage(), 'doc_id' => $docId]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Call Groq API for document analysis (online)
+     */
+    private function analyzeWithGroq(string $fullText, string $originalTitle): array
+    {
+        try {
+            $groqApiKey = env('GROQ_API_KEY');
+            $groqModel = env('GROQ_MODEL', 'llama-3.3-70b-versatile');
+
+            if (!$groqApiKey) {
+                throw new \Exception('Groq API key not configured');
+            }
+
+            // Limit text to first 3000 characters for analysis (to save tokens)
+            $textSample = substr($fullText, 0, 3000);
+
+            $systemPrompt = 'You are an AI assistant specialized in analyzing legal and business documents. Your task is to analyze document content and extract key metadata in JSON format.';
+
+            $userPrompt = <<<EOT
+Analyze this document and provide metadata in JSON format with these fields:
+
+1. "title": A concise, descriptive title (max 100 chars)
+2. "description": A brief summary of the document content (max 500 chars)
+3. "category": The document category (choose from: Contract, Policy, Report, Legal Document, Memorandum, Letter, Form, Invoice, Agreement, Other)
+4. "document_type": Specific type (e.g., "Employment Contract", "Privacy Policy", "Financial Report", etc.)
+5. "key_topics": Array of 3-5 main topics/keywords
+6. "suggested_folder": Suggested folder name for organization
+7. "urgency": "high", "medium", or "low"
+8. "requires_review": true/false - if document needs legal/compliance review
+
+Document Title: {$originalTitle}
+
+Document Content:
+{$textSample}
+
+Return ONLY valid JSON, no other text.
+EOT;
+
+            \Log::info('Calling Groq API for document analysis', [
+                'original_title' => $originalTitle,
+                'text_length' => strlen($fullText),
+                'sample_length' => strlen($textSample)
+            ]);
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $groqApiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(30)
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model' => $groqModel,
+                'messages' => [
+                    ['role' => 'system', 'content' => $systemPrompt],
+                    ['role' => 'user', 'content' => $userPrompt]
+                ],
+                'temperature' => 0.3, // Lower temperature for more consistent output
+                'max_tokens' => 1000,
+                'response_format' => ['type' => 'json_object']
+            ]);
+
+            if (!$response->successful()) {
+                $errorBody = $response->json();
+                throw new \Exception('Groq API error: ' . ($errorBody['error']['message'] ?? 'Unknown error'));
+            }
+
+            $data = $response->json();
+            $aiResponse = $data['choices'][0]['message']['content'] ?? '';
+
+            // Parse JSON response
+            $analysis = json_decode($aiResponse, true);
+
+            if (!$analysis) {
+                throw new \Exception('Invalid JSON response from Groq AI');
+            }
+
+            \Log::info('Groq AI document analysis completed', [
+                'analysis' => $analysis,
+                'tokens_used' => $data['usage'] ?? []
+            ]);
+
+            return $analysis;
+
+        } catch (\Exception $e) {
+            \Log::error('Groq AI document analysis failed', [
+                'error' => $e->getMessage(),
+                'original_title' => $originalTitle
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Intelligently match folder from AI analysis based on database folders
+     */
+    private function matchFolderFromAI(array $aiAnalysis): ?\App\Models\Folder
+    {
+        // Get all available folders from database
+        $availableFolders = \App\Models\Folder::all();
+
+        if ($availableFolders->isEmpty()) {
+            \Log::warning('No folders available in database for matching');
+            return null;
+        }
+
+        \Log::info('Starting intelligent folder matching', [
+            'available_folders' => $availableFolders->pluck('folder_name')->toArray(),
+            'ai_suggested_folder' => $aiAnalysis['suggested_folder'] ?? null,
+            'ai_category' => $aiAnalysis['category'] ?? null,
+            'ai_document_type' => $aiAnalysis['document_type'] ?? null
+        ]);
+
+        $folder = null;
+
+        // Strategy 1: Exact match on suggested_folder
+        if (!empty($aiAnalysis['suggested_folder'])) {
+            $suggestedFolder = strtolower(trim($aiAnalysis['suggested_folder']));
+
+            foreach ($availableFolders as $dbFolder) {
+                $dbFolderName = strtolower(trim($dbFolder->folder_name));
+
+                // Exact match
+                if ($dbFolderName === $suggestedFolder) {
+                    \Log::info('Folder matched: Exact match', ['folder' => $dbFolder->folder_name]);
+                    return $dbFolder;
+                }
+
+                // Contains match (bidirectional)
+                if (strpos($dbFolderName, $suggestedFolder) !== false || strpos($suggestedFolder, $dbFolderName) !== false) {
+                    \Log::info('Folder matched: Partial match', ['folder' => $dbFolder->folder_name]);
+                    $folder = $dbFolder;
+                    break;
+                }
+            }
+        }
+
+        // Strategy 2: Match by document_type using keyword mapping
+        if (!$folder && !empty($aiAnalysis['document_type'])) {
+            $docType = strtolower(trim($aiAnalysis['document_type']));
+
+            // Define keyword to folder mappings based on your database folders
+            // This maps common legal document type keywords to your actual folder names
+            $keywordMappings = [
+                // MOA folder keywords
+                'memorandum' => 'MOA',
+                'agreement' => 'MOA',
+                'resolution' => 'MOA',
+                'moa' => 'MOA',
+                'memorandum of agreement' => 'MOA',
+
+                // Criminal folder keywords
+                'criminal' => 'CRIMINAL',
+                'felony' => 'CRIMINAL',
+                'misdemeanor' => 'CRIMINAL',
+                'arrest' => 'CRIMINAL',
+                'indictment' => 'CRIMINAL',
+
+                // Civil Cases folder keywords
+                'civil' => 'Civil Cases',
+                'lawsuit' => 'Civil Cases',
+                'complaint' => 'Civil Cases',
+                'petition' => 'Civil Cases',
+                'litigation' => 'Civil Cases',
+            ];
+
+            foreach ($keywordMappings as $keyword => $targetFolderName) {
+                if (strpos($docType, $keyword) !== false) {
+                    // Find folder by name
+                    $matchedFolder = $availableFolders->first(function($f) use ($targetFolderName) {
+                        return strtolower(trim($f->folder_name)) === strtolower(trim($targetFolderName));
+                    });
+
+                    if ($matchedFolder) {
+                        \Log::info('Folder matched: Document type keyword', [
+                            'keyword' => $keyword,
+                            'folder' => $matchedFolder->folder_name
+                        ]);
+                        return $matchedFolder;
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: Match by category
+        if (!$folder && !empty($aiAnalysis['category'])) {
+            $category = \App\Models\Category::where('category_name', 'LIKE', '%' . $aiAnalysis['category'] . '%')
+                ->orWhere('category_name', 'LIKE', '%' . $aiAnalysis['document_type'] . '%')
+                ->first();
+
+            if ($category) {
+                $folder = \App\Models\Folder::where('category_id', $category->category_id)->first();
+                if ($folder) {
+                    \Log::info('Folder matched: Category match', [
+                        'category' => $category->category_name,
+                        'folder' => $folder->folder_name
+                    ]);
+                }
+            }
+        }
+
+        return $folder;
     }
 
 }

@@ -20,11 +20,11 @@ const NewsCard: React.FC<NewsProps> = ({
     quote = "",
 }) => {
     return (
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden flex flex-col transition-all duration-300 hover:shadow-lg">
+        <div className="bg-white rounded-2xl shadow-lg border border-green-100 overflow-hidden flex flex-col transition-all duration-300 hover:shadow-2xl hover:scale-[1.02] hover:border-green-300">
             <img src={image} alt={title} className="w-full h-52 object-cover" />
             <div className="p-6 flex flex-col justify-between h-full">
                 <div>
-                    <h2 className="text-xl font-bold text-[#003A18] leading-snug">
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent leading-snug">
                         {title}
                     </h2>
                     <p className="text-sm text-gray-500 mt-1">
@@ -38,7 +38,7 @@ const NewsCard: React.FC<NewsProps> = ({
                         para.startsWith('"') ? (
                             <blockquote
                                 key={index}
-                                className="pl-4 border-l-4 border-[#003A18] text-gray-600 italic"
+                                className="pl-4 border-l-4 border-green-600 text-gray-600 italic"
                             >
                                 {para}
                             </blockquote>
@@ -48,8 +48,8 @@ const NewsCard: React.FC<NewsProps> = ({
                     )}
 
                     {features.length > 0 && (
-                        <div className="bg-[#f1f8f5] p-4 rounded-md border border-[#cce5da]">
-                            <h3 className="font-semibold text-[#003A18] mb-1 text-sm">
+                        <div className="bg-gradient-to-br from-green-50 to-green-100/50 p-4 rounded-lg border border-green-200">
+                            <h3 className="font-semibold text-green-700 mb-1 text-sm">
                                 Key Features:
                             </h3>
                             <ul className="list-disc pl-5 text-xs text-gray-700 space-y-1">
@@ -61,7 +61,7 @@ const NewsCard: React.FC<NewsProps> = ({
                     )}
 
                     {quote && (
-                        <blockquote className="pl-4 border-l-4 border-[#003A18] text-gray-600 italic">
+                        <blockquote className="pl-4 border-l-4 border-green-600 text-gray-600 italic">
                             {quote}
                         </blockquote>
                     )}

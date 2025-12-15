@@ -93,17 +93,33 @@ class AIProcessController extends Controller
         $documentData = [];
         
         if ($latestDocument) {
+            // Load relationships
+            $latestDocument->load(['folder', 'user']);
+
+            // Construct full name from user
+            $createdByName = 'Unknown User';
+            if ($latestDocument->user) {
+                $nameParts = array_filter([
+                    $latestDocument->user->firstname,
+                    $latestDocument->user->middle_name,
+                    $latestDocument->user->lastname
+                ]);
+                $createdByName = implode(' ', $nameParts) ?: 'Unknown User';
+            }
+
             $documentData = [
                 'doc_id' => $latestDocument->doc_id,
                 'fileName' => basename($latestDocument->file_path) ?: $latestDocument->title,
                 'title' => $latestDocument->title,
+                'description' => $latestDocument->remarks,
                 'createdAt' => $latestDocument->created_at->format('Y-m-d'),
-                'createdBy' => $latestDocument->created_by,
+                'createdBy' => $createdByName,
                 'filePath' => $latestDocument->file_path,
-                'analysis' => 'This document has been analyzed and is ready for processing.',
-                'suggestedLocation' => 'Documents / General',
-                'suggestedCategory' => 'General Document',
-                'status' => 'Pending Review'
+                'analysis' => $latestDocument->remarks ?: 'This document has been analyzed and is ready for processing.',
+                // Show folder name as the location
+                'suggestedLocation' => $latestDocument->folder ? $latestDocument->folder->folder_name : 'General',
+                'suggestedCategory' => $latestDocument->folder ? $latestDocument->folder->folder_name : 'General Document',
+                'status' => ucfirst($latestDocument->status ?? 'Pending Review')
             ];
         } else {
             // Fallback to URL parameters if no document found

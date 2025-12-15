@@ -9,7 +9,7 @@ class FolderController extends Controller
 {
     public function index()
     {
-        return response()->json(Folder::with(['children', 'category', 'creator'])->get());
+        return response()->json(Folder::with(['children', 'creator'])->get());
     }
 
     public function store(Request $request)
@@ -25,8 +25,7 @@ class FolderController extends Controller
             'folder_name' => 'required|string|max:255',
             'folder_path' => 'required|string',
             'folder_type' => 'required|string',
-            'category_id' => 'nullable|integer|exists:categories,category_id',
-            'parent_folder_id' => 'nullable|integer|exists:folders,folder_id', // Fixed typo: removed space
+            'parent_folder_id' => 'nullable|integer|exists:folders,folder_id',
         ]);
 
         // define base path
@@ -51,9 +50,8 @@ class FolderController extends Controller
                 'folder_name'       => $validated['folder_name'],
                 'folder_path'       => $path,
                 'folder_type'       => $validated['folder_type'],
-                'category_id'       => $validated['category_id'] ?? null,
                 'parent_folder_id'  => $validated['parent_folder_id'] ?? null,
-                'created_by'        => $request->user()->getKey(), // Use getKey() instead of ->id
+                'created_by'        => $request->user()->getKey(),
             ]);
 
             Log::info('Folder created successfully', ['folder_id' => $folder->getKey()]);
@@ -81,9 +79,9 @@ public function search(Request $request, $term)
 {
     $folders = Folder::where('folder_name', 'LIKE', "%{$term}%")
                     ->orWhere('folder_path', 'LIKE', "%{$term}%")
-                    ->with(['children', 'category', 'creator'])
+                    ->with(['children', 'creator'])
                     ->get();
-    
+
     return response()->json($folders);
 }
 
@@ -92,15 +90,15 @@ public function recent($limit = 5)
 {
     $folders = Folder::orderBy('updated_at', 'desc')
                     ->take($limit)
-                    ->with(['children', 'category', 'creator'])
+                    ->with(['children', 'creator'])
                     ->get();
-    
+
     return response()->json($folders);
 }
 
     public function show($id)
     {
-        $folder = Folder::with(['children', 'category', 'creator'])->findOrFail($id);
+        $folder = Folder::with(['children', 'creator'])->findOrFail($id);
         return response()->json($folder);
     }
 
@@ -128,10 +126,10 @@ public function recent($limit = 5)
     // Add tree structure endpoint for hierarchical folder display
     public function tree()
     {
-        $folders = Folder::with(['children.children', 'category'])
+        $folders = Folder::with(['children.children'])
                          ->whereNull('parent_folder_id') // Only root folders
                          ->get();
-        
+
         return response()->json($folders);
     }
 }

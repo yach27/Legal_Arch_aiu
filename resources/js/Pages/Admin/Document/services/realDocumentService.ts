@@ -1,5 +1,5 @@
 // realDocumentService.ts - Real document service that connects to Laravel backend
-import { Document, DocumentFilters, Category } from '../types/types';
+import { Document, DocumentFilters } from '../types/types';
 
 // API configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -107,15 +107,6 @@ class RealDocumentService {
     }
   }
 
-  // Get categories from API
-  async getCategories(): Promise<Category[]> {
-    try {
-      return await this.apiCall<Category[]>('/categories');
-    } catch (error) {
-      console.error('Error loading categories:', error);
-      return [];
-    }
-  }
 
   // Get all documents with optional filtering
   async getAllDocuments(folderId?: number, filters?: DocumentFilters, searchTerm?: string): Promise<Document[]> {
@@ -130,8 +121,8 @@ class RealDocumentService {
     }
     
     if (filters) {
-      if (filters.category_id) {
-        params.append('category_id', filters.category_id.toString());
+      if (filters.folder_id) {
+        params.append('folder_id', filters.folder_id.toString());
       }
       if (filters.year) {
         params.append('year', filters.year.toString());

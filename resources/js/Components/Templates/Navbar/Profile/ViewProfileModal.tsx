@@ -1,5 +1,5 @@
-import React from "react";
-import { User, Mail, Calendar, Shield, X } from "lucide-react";
+import React, { useState } from "react";
+import { User, Mail, Calendar, Shield, X, Edit, Trash2, Camera } from "lucide-react";
 
 interface UserData {
     user_id: number;
@@ -9,20 +9,42 @@ interface UserData {
     email: string;
     created_at: string;
     updated_at: string;
+    profile_picture?: string;
 }
 
 interface ViewProfileModalProps {
     isOpen: boolean;
     onClose: () => void;
     userData: UserData | null;
+    onEdit: () => void;
+    onDelete: () => void;
+    onUploadPicture: (file: File) => void;
 }
 
 const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
     isOpen,
     onClose,
     userData,
+    onEdit,
+    onDelete,
+    onUploadPicture,
 }) => {
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
     if (!isOpen || !userData) return null;
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setIsUploading(true);
+            try {
+                await onUploadPicture(file);
+            } finally {
+                setIsUploading(false);
+            }
+        }
+    };
 
     const formatDate = (dateString: string): string => {
         return new Date(dateString).toLocaleDateString("en-US", {
@@ -54,7 +76,7 @@ const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
             style={{ pointerEvents: 'auto' }}
         >
             <div
-                className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden ml-64"
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto ml-64"
                 onClick={(e) => e.stopPropagation()}
                 style={{ marginLeft: "16rem" }}
             >
@@ -69,9 +91,35 @@ const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
 
                     {/* Profile Picture and Name */}
                     <div className="flex flex-col items-center">
-                        <div className="w-28 h-28 rounded-full bg-white/20 backdrop-blur-lg flex items-center justify-center text-white text-4xl font-bold shadow-xl mb-4 border-4 border-white/30">
-                            {getInitials()}
+                        <div className="relative group">
+                            {userData.profile_picture ? (
+                                <img
+                                    src={`/storage/${userData.profile_picture}`}
+                                    alt="Profile"
+                                    className="w-28 h-28 rounded-full object-cover shadow-xl border-4 border-white/30"
+                                />
+                            ) : (
+                                <div className="w-28 h-28 rounded-full bg-white/20 backdrop-blur-lg flex items-center justify-center text-white text-4xl font-bold shadow-xl border-4 border-white/30">
+                                    {getInitials()}
+                                </div>
+                            )}
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className="absolute bottom-0 right-0 bg-white/90 hover:bg-white p-2 rounded-full shadow-lg transition-all duration-200 group-hover:scale-110"
+                                title="Upload profile picture"
+                            >
+                                <Camera className="w-4 h-4 text-green-600" />
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleFileChange}
+                                className="hidden"
+                            />
                         </div>
+                        <div className="h-2 mb-4"></div>
                         <h2 className="text-3xl font-bold text-white text-center mb-2">
                             {getFullName()}
                         </h2>
@@ -88,7 +136,7 @@ const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
                 </div>
 
                 {/* Content Section */}
-                <div className="px-8 py-6 max-h-[50vh] overflow-y-auto">
+                <div className="px-8 py-6">
                     {/* Personal Information Card */}
                     <div className="mb-6">
                         <div className="flex items-center gap-2 mb-4">
@@ -205,7 +253,23 @@ const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="px-8 py-5 bg-gray-50 border-t border-gray-200">
+                <div className="px-8 py-5 bg-gray-50 border-t border-gray-200 space-y-3">
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onEdit}
+                            className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-[1.02] transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                        >
+                            <Edit className="w-4 h-4" />
+                            Edit Profile
+                        </button>
+                        <button
+                            onClick={onDelete}
+                            className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold hover:from-red-700 hover:to-red-800 transform hover:scale-[1.02] transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Delete Account
+                        </button>
+                    </div>
                     <button
                         onClick={onClose}
                         className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold hover:from-green-700 hover:to-emerald-700 transform hover:scale-[1.02] transition-all duration-200 shadow-lg hover:shadow-xl"

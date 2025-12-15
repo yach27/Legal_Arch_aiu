@@ -14,8 +14,7 @@ import FilterModal from '../Filter/FilterModal';
 // Import services and types - FIXED: Correct paths for Laravel Inertia
 import realDocumentService from '../../services/realDocumentService';
 import folderService from '../../services/folderService';
-import { categoryService } from '../../services/categoryService';
-import { Folder, Document, Category, DocumentFilters } from '../../types/types';
+import { Folder, Document, DocumentFilters } from '../../types/types';
 
 type ViewMode = 'folders' | 'documents';
 
@@ -25,7 +24,6 @@ interface DocumentManagementState {
   viewMode: ViewMode;
   folders: Folder[];
   documents: Document[];
-  categories: Category[];
   loading: boolean;
   filters: DocumentFilters;
 }
@@ -38,7 +36,6 @@ const DocumentManagement: React.FC = () => {
     viewMode: 'folders',
     folders: [],
     documents: [],
-    categories: [],
     loading: false,
     filters: {}
   });
@@ -49,7 +46,7 @@ const DocumentManagement: React.FC = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  const handleCreate = async (folderName: string, categoryId: number) => {
+  const handleCreate = async () => {
     // This callback is called after the modal successfully creates the folder
     // We need to refresh both the folders list and counts
     try {
@@ -70,7 +67,6 @@ const DocumentManagement: React.FC = () => {
     viewMode,
     folders,
     documents,
-    categories,
     loading,
     filters
   } = state;
@@ -93,16 +89,22 @@ const DocumentManagement: React.FC = () => {
     }
   }, [folders]);
 
+  // Track if we just opened a folder to prevent double loading
+  const justOpenedFolder = React.useRef(false);
+
   // Load data when search term or filters change (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setState(prev => ({ ...prev, loading: true }));
       if (viewMode === 'folders') {
+        setState(prev => ({ ...prev, loading: true }));
         loadFolders();
-      } else if (searchTerm || Object.keys(filters).length > 0) {
-        // Only use useEffect for search/filter, handleFolderClick handles initial load
+      } else if (currentFolder && !justOpenedFolder.current) {
+        // Reload documents when search/filters change, including when cleared
+        setState(prev => ({ ...prev, loading: true }));
         loadDocuments();
       }
+      // Reset the flag after the effect runs
+      justOpenedFolder.current = false;
     }, 200); // Debounce for search/filters
 
     return () => clearTimeout(timeoutId);
@@ -112,27 +114,12 @@ const DocumentManagement: React.FC = () => {
   const loadInitialData = async (): Promise<void> => {
     setState(prev => ({ ...prev, loading: true }));
     try {
-      // Load categories from database
-      const categoriesData = await loadCategories();
-      setState(prev => ({ ...prev, categories: categoriesData, loading: false }));
-
-      // Load folders in background without blocking UI
-      loadFolders();
+      // Load folders
+      await loadFolders();
+      setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
       console.error('Error loading initial data:', error);
       setState(prev => ({ ...prev, loading: false }));
-    }
-  };
-
-  // Load categories from API
-  const loadCategories = async (): Promise<Category[]> => {
-    try {
-      const categories = await realDocumentService.getCategories();
-      return categories;
-    } catch (error) {
-      console.error('Error loading categories:', error);
-      // Fallback to mock data if API fails
-      return categoryService.getAllCategories();
     }
   };
 
@@ -206,8 +193,14 @@ const DocumentManagement: React.FC = () => {
       // Don't set loading here - it's already set by handleFolderClick or useEffect
       let documentsData: Document[];
 
+      // Always pass the folder_id along with search/filters to search within the current folder
       if (searchTerm || Object.keys(filters).length > 0) {
-        documentsData = await realDocumentService.getFilteredDocuments(filters, searchTerm);
+        // Merge current folder with filters
+        const mergedFilters = {
+          ...filters,
+          ...(currentFolder && { folder_id: currentFolder.folder_id })
+        };
+        documentsData = await realDocumentService.getFilteredDocuments(mergedFilters, searchTerm);
       } else {
         documentsData = await realDocumentService.getAllDocuments(currentFolder?.folder_id);
       }
@@ -225,11 +218,16 @@ const DocumentManagement: React.FC = () => {
   };
 
   const handleFolderClick = async (folder: Folder): Promise<void> => {
+    // Set flag to prevent useEffect from double-loading
+    justOpenedFolder.current = true;
+
+    // Clear search term and filters when opening a folder
     setState(prev => ({
       ...prev,
       currentFolder: folder,
       viewMode: 'documents',
       searchTerm: '',
+      filters: {}, // Clear filters when opening a folder
       loading: true,
       documents: [] // Clear documents to prevent showing old data
     }));
@@ -314,9 +312,6 @@ const DocumentManagement: React.FC = () => {
     }
   };
 
-  const getCategoryById = (categoryId: number): Category | undefined => {
-    return categoryService.getCategoryById(categoryId);
-  };
 
   // FIXED: Make this async since folderService methods are now async
   const buildBreadcrumbPath = async (): Promise<Folder[]> => {
@@ -550,7 +545,6 @@ const DocumentManagement: React.FC = () => {
                       <DocumentListItem
                         key={document.doc_id}
                         document={document}
-                        category={getCategoryById(document.category_id)}
                       />
                     ))
                   ) : (
@@ -581,7 +575,7 @@ const DocumentManagement: React.FC = () => {
             {/* Modal Content */}
             <div className="p-6">
               <FileUploadUI
-                maxFileSize={10 * 1024 * 1024} // 10MB limit
+                maxFileSize={50 * 1024 * 1024} // 50MB limit
                 acceptedFileTypes=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
                 onUploadSuccess={async (file) => {
                   // Navigate to AI processing page for metadata entry
@@ -605,7 +599,7 @@ const DocumentManagement: React.FC = () => {
         onClose={() => setIsFilterModalOpen(false)}
         onApplyFilters={handleApplyFilters}
         currentFilters={filters}
-        categories={categories}
+        folders={folders}
       />
     </div>
   );
