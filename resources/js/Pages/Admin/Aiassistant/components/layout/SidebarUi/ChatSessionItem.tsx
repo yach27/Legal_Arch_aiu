@@ -30,62 +30,76 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
-    <div
-      className={`relative mb-2 rounded-lg cursor-pointer transition-all duration-200 border-b border-green-600/30 ${
-        isSelected
-          ? "bg-green-700 shadow-lg border-l-4 border-l-green-400"
-          : "bg-green-800/30 hover:bg-green-700/50 hover:shadow-md hover:border-l-4 hover:border-l-green-500"
-      }`}
-      onClick={onSelect}
-    >
-      <div className="p-3 flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0 overflow-hidden">
-          {/* Title with icon indicator */}
-          <div className="flex items-center gap-2 mb-1">
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              isSelected ? "bg-green-300 animate-pulse" : "bg-green-500/50"
-            }`} />
-            <p className="text-sm font-semibold text-white leading-tight truncate">
-              {session.title}
-            </p>
+    <div className="relative mb-3 group" onClick={onSelect}>
+      {/* Glow effect for selected - Staff theme */}
+      {isSelected && (
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#FBEC5D]/30 to-[#F4D03F]/30 rounded-2xl blur-md"></div>
+      )}
+
+      {/* Glass session card */}
+      <div
+        className={`relative cursor-pointer transition-all duration-300 rounded-2xl ${isSelected
+            ? "backdrop-blur-xl bg-white/20 shadow-xl border-2 border-white/40"
+            : "backdrop-blur-md bg-white/5 hover:bg-white/10 border-2 border-white/10 hover:border-white/20 hover:shadow-lg"
+          }`}
+      >
+        {/* Inner highlight */}
+        <div className={`absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none rounded-2xl ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          } transition-opacity`}></div>
+
+        <div className="relative p-4 flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {/* Title with icon indicator - Staff theme */}
+            <div className="flex items-center gap-2.5 mb-1.5">
+              <div className="relative">
+                {isSelected && (
+                  <div className="absolute inset-0 bg-[#FBEC5D]/50 rounded-full blur-sm"></div>
+                )}
+                <div className={`relative w-2.5 h-2.5 rounded-full flex-shrink-0 ${isSelected ? "bg-[#FBEC5D] shadow-lg" : "bg-white/60"
+                  } ${isSelected ? "animate-pulse" : ""}`} />
+              </div>
+              <p className={`text-sm font-bold text-white leading-tight truncate drop-shadow-sm ${isSelected ? "text-white" : "text-white/90"
+                }`}>
+                {session.title}
+              </p>
+            </div>
+
+            {/* Last message preview */}
+            {session.lastMessage && (
+              <p className={`text-xs mt-2 truncate pl-5 italic ${isSelected ? "text-white/80" : "text-white/60"
+                }`}>
+                {session.lastMessage}
+              </p>
+            )}
           </div>
 
-          {/* Last message preview */}
-          {session.lastMessage && (
-            <p className="text-xs text-green-100/70 mt-1.5 truncate pl-4 italic">
-              {session.lastMessage}
-            </p>
-          )}
-        </div>
-
-        {/* More options button */}
-        <div className="relative flex-shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDropdown(!showDropdown);
-            }}
-            className="p-1.5 hover:bg-green-600 rounded-full transition-colors"
-            aria-label="More options"
-          >
-            <MoreVertical className="w-4 h-4 text-white" />
-          </button>
-
-          {showDropdown && (
-            <ChatSessionDropdown
-              isStarred={isStarred}
-              onStar={onStar}
-              onUnstar={onUnstar}
-              onDelete={onDelete}
-              onClose={() => setShowDropdown(false)}
-            />
-          )}
+          {/* More options button */}
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDropdown(!showDropdown);
+              }}
+              className="p-2 backdrop-blur-md bg-white/10 hover:bg-white/20 rounded-xl transition-all border border-white/20"
+              aria-label="More options"
+            >
+              <MoreVertical className="w-4 h-4 text-white" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Bottom border with gradient */}
-      {!isSelected && (
-        <div className="h-px bg-gradient-to-r from-transparent via-green-500/20 to-transparent" />
+      {/* Dropdown positioned outside the card */}
+      {showDropdown && (
+        <div className="absolute right-0 top-full mt-1 z-50">
+          <ChatSessionDropdown
+            isStarred={isStarred}
+            onStar={onStar}
+            onUnstar={onUnstar}
+            onDelete={onDelete}
+            onClose={() => setShowDropdown(false)}
+          />
+        </div>
       )}
     </div>
   );

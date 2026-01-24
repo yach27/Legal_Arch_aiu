@@ -22,6 +22,21 @@ class User extends Authenticatable
         'email',
         'password',
         'profile_picture',
+        'role',
+        'status',
+        'can_edit',
+        'can_delete',
+        'can_archive',
+        'can_upload',
+        'can_view',
+    ];
+
+    protected $casts = [
+        'can_edit' => 'boolean',
+        'can_delete' => 'boolean',
+        'can_archive' => 'boolean',
+        'can_upload' => 'boolean',
+        'can_view' => 'boolean',
     ];
 
     protected $hidden = [

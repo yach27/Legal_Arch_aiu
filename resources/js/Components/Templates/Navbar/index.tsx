@@ -21,10 +21,10 @@ const Navbar: FC = () => {
     };
 
     return (
-        <div className="flex items-center justify-between px-4 py-3 bg-white shadow-md w-full z-20">
+        <div className="flex items-center justify-between px-4 py-3 w-full z-20 bg-white border-b border-gray-200 shadow-sm">
             <button
                 onClick={handleMenuCollapse}
-                className="text-black md:text-black hover:text-gray-600"
+                className="text-green-800 hover:text-green-600 transition-colors"
             >
                 <Menu />
             </button>

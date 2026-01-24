@@ -15,7 +15,7 @@ const AdminDocument: NextPageWithLayout = () => {
 
 // Apply Admin Layout wrapper with TypeScript
 AdminDocument.layout = (page: React.ReactElement) => (
-  <AdminLayout>{page}</AdminLayout>
+  <AdminLayout hideSidebar={true} noPadding={true}>{page}</AdminLayout>
 );
 
 export default AdminDocument;

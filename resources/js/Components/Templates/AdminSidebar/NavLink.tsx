@@ -1,4 +1,4 @@
-import { Home, Bot, FileText, BarChart3, Users2, CreditCard, LogOut } from "lucide-react";
+import { Home, Bot, FileText, BarChart3, Users2, CreditCard, LogOut, Activity, User } from "lucide-react";
 import { FC, useContext } from "react";
 import { Link, usePage } from "@inertiajs/react";
 import { DashboardContext } from "../../../Context/DashboardContext";
@@ -30,5 +30,15 @@ export const navLinksData = [
         title: "Reports",
         path: "/admin/reports",
         icon: <BarChart3 size={18} />,
+    },
+    {
+        title: "Activity Logs",
+        path: "/admin/activity-logs",
+        icon: <Activity size={18} />,
+    },
+    {
+        title: "Account Management",
+        path: "/admin/account",
+        icon: <User size={18} />,
     },
 ];

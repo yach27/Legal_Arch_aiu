@@ -4,70 +4,87 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\View;
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Storage;
 use App\Models\Document;
-use App\Models\DocumentEmbedding;
 use App\Models\ActivityLog;
-use Illuminate\Support\Facades\Http;
+use App\Services\DocumentProcessingService;
+use App\Services\AIAnalysisService;
+use App\Services\DocumentStorageService;
+use App\Services\FolderMatchingService;
+use App\Services\DocumentQueryService;
 use Illuminate\Support\Facades\Log;
 
 class DocumentController extends Controller
 {
+    protected $processingService;
+    protected $aiAnalysisService;
+    protected $storageService;
+    protected $folderMatchingService;
+    protected $queryService;
+
+    public function __construct(
+        DocumentProcessingService $processingService,
+        AIAnalysisService $aiAnalysisService,
+        DocumentStorageService $storageService,
+        FolderMatchingService $folderMatchingService,
+        DocumentQueryService $queryService
+    ) {
+        $this->processingService = $processingService;
+        $this->aiAnalysisService = $aiAnalysisService;
+        $this->storageService = $storageService;
+        $this->folderMatchingService = $folderMatchingService;
+        $this->queryService = $queryService;
+    }
+
     public function index()
     {
         return Inertia::render('Admin/Document/index');
     }
 
-    // Handle file upload with text processing and embedding generation
+    /**
+     * Handle file upload with text processing and embedding generation
+     */
     public function store(Request $request)
     {
         // Validate the uploaded file
         $request->validate([
-            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:51200', // 50MB max, document types only
+            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:51200',
             'folder_id' => 'nullable|integer',
             'title' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
             'category_id' => 'nullable|integer',
         ]);
 
+        $user = $request->user();
+        if (!$user->can_upload && $user->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to upload documents'
+            ], 403);
+        }
+
         try {
-            // Increase execution time for OCR processing (especially for large PDFs with stamps/handwriting)
-            set_time_limit(600); // 10 minutes to handle large PDF OCR processing
+            set_time_limit(600); // 10 minutes for large PDF OCR processing
 
             $file = $request->file('file');
 
-            // Get the folder path if folder_id is provided
-            $folderPath = '';
-            if ($request->folder_id) {
-                $folder = \App\Models\Folder::find($request->folder_id);
-                if ($folder) {
-                    $folderPath = $folder->folder_name;
-                }
-            }
-            
-            // Store the file in the appropriate folder
-            $path = $file->store($folderPath, 'documents');
-            
+            // Store the file using storage service
+            $path = $this->storageService->storeUploadedFile($file, $request->folder_id);
+
             // Create document record
             $document = Document::create([
                 'title' => $request->title ?? pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
                 'file_path' => $path,
                 'folder_id' => $request->folder_id,
                 'remarks' => $request->description,
-                'status' => 'processing', // Set to processing since we auto-process
+                'status' => 'processing',
                 'created_by' => auth()->id(),
             ]);
 
-            // Debug logging
-            \Log::info('Document uploaded successfully', [
+            Log::info('Document uploaded successfully', [
                 'doc_id' => $document->doc_id,
                 'title' => $document->title,
                 'file_path' => $document->file_path,
-                'status' => $document->status,
-                'created_by' => $document->created_by,
-                'user_id' => auth()->id()
             ]);
 
             // Process document content and generate embeddings automatically
@@ -76,74 +93,73 @@ class DocumentController extends Controller
 
                 // Extract text first
                 try {
-                    $fullPath = Storage::disk('documents')->path($document->file_path);
-                    $fullText = $this->extractTextFromDocument($fullPath, $file->getMimeType());
+                    $fullText = $this->storageService->getDocumentText($document);
                 } catch (\Exception $extractError) {
-                    \Log::warning('Text extraction failed, proceeding without AI analysis', [
+                    Log::warning('Text extraction failed, proceeding without AI analysis', [
                         'doc_id' => $document->doc_id,
                         'error' => $extractError->getMessage()
                     ]);
                 }
 
-                // Process document content and generate embeddings first
-                $this->processDocumentContent($document, $file->getMimeType());
+                // Process document content and generate embeddings
+                $this->processingService->processDocument($document, $file->getMimeType());
 
-                // Then use AI to analyze and auto-fill metadata (Hybrid: Groq online / ai_bridge offline)
-                try {
-                    $aiServiceType = env('AI_SERVICE_TYPE', 'local');
+                // Use AI to analyze and auto-fill metadata
+                if ($fullText) {
+                    try {
+                        $aiAnalysis = $this->aiAnalysisService->analyzeDocument(
+                            $document->doc_id,
+                            $fullText,
+                            $document->title
+                        );
 
-                    if ($aiServiceType === 'groq' && env('GROQ_API_KEY') && $fullText) {
-                        \Log::info('Using Groq AI for auto-fill (online)', ['doc_id' => $document->doc_id]);
-                        $aiAnalysis = $this->analyzeWithGroq($fullText, $document->title);
-                    } else {
-                        \Log::info('Using AI Bridge for auto-fill (offline)', ['doc_id' => $document->doc_id]);
-                        $aiAnalysis = $this->analyzeWithAIBridge($document->doc_id);
-                    }
-
-                    // Update document with AI suggestions
-                    if (!empty($aiAnalysis['title']) || !empty($aiAnalysis['description'])) {
-                        $updateData = [
-                            'title' => $aiAnalysis['title'] ?? $document->title,
-                            'remarks' => $aiAnalysis['description'] ?? $document->remarks,
-                        ];
-
-                        \Log::info('AI Analysis Results', [
+                        // Log AI analysis result for debugging
+                        Log::info('AI analysis result', [
                             'doc_id' => $document->doc_id,
-                            'suggested_folder' => $aiAnalysis['suggested_folder'] ?? null,
-                            'category' => $aiAnalysis['category'] ?? null,
-                            'document_type' => $aiAnalysis['document_type'] ?? null
+                            'ai_title' => $aiAnalysis['title'] ?? 'NULL',
+                            'ai_description' => $aiAnalysis['description'] ?? 'NULL',
+                            'ai_remarks' => $aiAnalysis['remarks'] ?? 'NULL',
+                            'ai_suggested_folder' => $aiAnalysis['suggested_folder'] ?? 'NULL',
                         ]);
 
-                        // Match folder intelligently based on AI suggestions and database folders
-                        $folder = $this->matchFolderFromAI($aiAnalysis);
+                        // Update document with AI suggestions
+                        if (!empty($aiAnalysis['title']) || !empty($aiAnalysis['description'])) {
+                            $updateData = [
+                                'title' => $aiAnalysis['title'] ?? $document->title,
+                                'description' => $aiAnalysis['description'] ?? $document->description,
+                                'ai_suggested_folder' => $aiAnalysis['suggested_folder'] ?? null,
+                            ];
 
-                        if ($folder) {
-                            $updateData['folder_id'] = $folder->folder_id;
-                            \Log::info('Folder matched successfully', [
+                            if (!empty($aiAnalysis['remarks'])) {
+                                $updateData['remarks'] = $aiAnalysis['remarks'];
+                            }
+
+                            Log::info('Updating document with AI data', [
                                 'doc_id' => $document->doc_id,
-                                'folder_id' => $folder->folder_id,
-                                'folder_name' => $folder->folder_name
+                                'update_data' => $updateData,
                             ]);
-                        } else {
-                            \Log::warning('No folder match found for AI suggestions', [
-                                'doc_id' => $document->doc_id,
-                                'ai_suggestions' => $aiAnalysis
-                            ]);
+
+                            // Match folder intelligently
+                            $folder = $this->folderMatchingService->matchFolderFromAI($aiAnalysis);
+
+                            if ($folder) {
+                                $updateData['folder_id'] = $folder->folder_id;
+                                Log::info('Folder matched successfully', [
+                                    'doc_id' => $document->doc_id,
+                                    'folder_id' => $folder->folder_id,
+                                    'folder_name' => $folder->folder_name,
+                                ]);
+                            }
+
+                            $document->update($updateData);
                         }
-
-                        $document->update($updateData);
-                        \Log::info('Document metadata auto-filled', [
+                    } catch (\Exception $aiError) {
+                        Log::warning('AI auto-fill failed, document saved without AI metadata', [
                             'doc_id' => $document->doc_id,
-                            'updated_fields' => array_keys($updateData)
+                            'error' => $aiError->getMessage()
                         ]);
                     }
-                } catch (\Exception $aiError) {
-                    \Log::warning('AI auto-fill failed, document saved without AI metadata', [
-                        'doc_id' => $document->doc_id,
-                        'error' => $aiError->getMessage()
-                    ]);
                 }
-                \Log::info('Document processing completed', ['doc_id' => $document->doc_id, 'status' => 'active']);
 
                 // Log successful upload activity
                 ActivityLog::create([
@@ -153,8 +169,9 @@ class DocumentController extends Controller
                     'activity_time' => now(),
                     'activity_details' => 'Document uploaded and processed with AI: ' . $document->title
                 ]);
+
             } catch (\Exception $e) {
-                \Log::error('Document processing failed in upload', [
+                Log::error('Document processing failed in upload', [
                     'doc_id' => $document->doc_id,
                     'error' => $e->getMessage()
                 ]);
@@ -163,7 +180,6 @@ class DocumentController extends Controller
                     'remarks' => 'Processing timeout or error: ' . $e->getMessage()
                 ]);
 
-                // Log failed upload activity
                 ActivityLog::create([
                     'user_id' => auth()->id(),
                     'doc_id' => $document->doc_id,
@@ -194,275 +210,183 @@ class DocumentController extends Controller
     }
 
     /**
-     * Process document content and generate embeddings
+     * Handle scanner service uploads (public endpoint, no auth required)
+     * This is specifically for the local scanner bridge service
      */
-    private function processDocumentContent(Document $document, string $mimeType): void
+    public function scannerUpload(Request $request)
     {
+        // Validate the uploaded file
+        $request->validate([
+            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:51200',
+        ]);
+
         try {
-            $fullPath = Storage::disk('documents')->path($document->file_path);
-            
-            // Extract text using Python service
-            $fullText = $this->extractTextFromDocument($fullPath, $mimeType);
-            
-            if (empty($fullText)) {
-                $document->update(['status' => 'failed', 'remarks' => 'Could not extract text from document']);
-                return;
-            }
+            set_time_limit(600); // 10 minutes for large PDF OCR processing
 
-            // Split text into chunks
-            $chunks = $this->chunkText($fullText);
-            
-            if (empty($chunks)) {
-                $document->update(['status' => 'failed', 'remarks' => 'Document text too short for processing']);
-                return;
-            }
+            $file = $request->file('file');
 
-            // Generate embeddings for chunks
-            $embeddings = $this->generateEmbeddingsForChunks($chunks);
+            // Store the file using storage service (no folder specified for scanner uploads)
+            $path = $this->storageService->storeUploadedFile($file, null);
 
-            // Store embeddings in database
-            foreach ($embeddings as $index => $embeddingData) {
-                DocumentEmbedding::create([
-                    'doc_id' => $document->doc_id,
-                    'chunk_index' => $index,
-                    'chunk_text' => $embeddingData['chunk_text'],
-                    'embedding_vector' => json_encode($embeddingData['embedding']),
-                    'metadata' => [
-                        'model_type' => $embeddingData['model_type'] ?? 'all-MiniLM-L6-v2',
-                        'embedding_dimensions' => count($embeddingData['embedding']),
-                        'chunk_length' => strlen($embeddingData['chunk_text']),
-                        'generated_at' => now()->toISOString(),
-                        'service_url' => env('LOCAL_EMBEDDING_URL', 'http://127.0.0.1:5001')
-                    ],
-                    'created_at' => now(),
-                ]);
-            }
+            // Create document record using system user (user_id 1, typically admin)
+            // You can change this to a specific "scanner" user if you create one
+            $systemUserId = 1;
 
-            // Update document status to active after successful processing
-            $document->update([
-                'status' => 'active',
-                'remarks' => "Processed into " . count($chunks) . " chunks"
+            $document = Document::create([
+                'title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+                'file_path' => $path,
+                'folder_id' => null,
+                'remarks' => 'Uploaded via scanner service',
+                'status' => 'processing',
+                'created_by' => $systemUserId,
             ]);
 
-        } catch (\Exception $e) {
-            $document->update([
-                'status' => 'failed', 
-                'remarks' => 'Processing failed: ' . $e->getMessage()
-            ]);
-        }
-    }
-
-    /**
-     * Extract text from document using Python service
-     */
-    private function extractTextFromDocument(string $filePath, string $mimeType): string
-    {
-        $textExtractionUrl = env('TEXT_EXTRACTION_URL', 'http://127.0.0.1:5002');
-        
-        try {
-            // Convert Windows paths to forward slashes for the HTTP request
-            $normalizedPath = str_replace('\\', '/', $filePath);
-            
-            $response = Http::timeout(480)->post($textExtractionUrl . '/extract/path', [
-                'file_path' => $normalizedPath,
-                'mime_type' => $mimeType
+            Log::info('Scanner document uploaded successfully', [
+                'doc_id' => $document->doc_id,
+                'title' => $document->title,
+                'file_path' => $document->file_path,
             ]);
 
-            if ($response->successful()) {
-                $data = $response->json();
-                return $data['text'] ?? '';
-            }
-            
-            throw new \Exception('Text extraction service error: ' . $response->body());
-            
-        } catch (\Exception $e) {
-            throw new \Exception('Text extraction failed: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Split text into chunks
-     */
-    private function chunkText(string $text, int $chunkSize = 1000, int $overlap = 200): array
-    {
-        if (empty($text)) {
-            return [];
-        }
-
-        $chunks = [];
-        $sentences = $this->splitIntoSentences($text);
-        
-        $currentChunk = '';
-        $currentLength = 0;
-        
-        foreach ($sentences as $sentence) {
-            $sentenceLength = strlen($sentence);
-            
-            if ($currentLength + $sentenceLength > $chunkSize && !empty($currentChunk)) {
-                $chunks[] = trim($currentChunk);
-                
-                $overlapText = $this->getOverlapText($currentChunk, $overlap);
-                $currentChunk = $overlapText . ' ' . $sentence;
-                $currentLength = strlen($currentChunk);
-            } else {
-                $currentChunk .= ' ' . $sentence;
-                $currentLength += $sentenceLength + 1;
-            }
-        }
-        
-        if (!empty($currentChunk)) {
-            $chunks[] = trim($currentChunk);
-        }
-        
-        return array_filter($chunks, fn($chunk) => strlen(trim($chunk)) > 50);
-    }
-
-    /**
-     * Split text into sentences
-     */
-    private function splitIntoSentences(string $text): array
-    {
-        $sentences = preg_split('/(?<=[.!?])\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
-        return array_filter($sentences, fn($sentence) => strlen(trim($sentence)) > 10);
-    }
-
-    /**
-     * Get overlap text from end of chunk
-     */
-    private function getOverlapText(string $text, int $overlapLength): string
-    {
-        if (strlen($text) <= $overlapLength) {
-            return $text;
-        }
-        
-        $overlap = substr($text, -$overlapLength);
-        $spacePos = strpos($overlap, ' ');
-        if ($spacePos !== false) {
-            $overlap = substr($overlap, $spacePos + 1);
-        }
-        
-        return $overlap;
-    }
-
-    /**
-     * Generate embeddings for text chunks
-     */
-    private function generateEmbeddingsForChunks(array $chunks): array
-    {
-        $embeddingUrl = env('LOCAL_EMBEDDING_URL', 'http://127.0.0.1:5001');
-        $embeddings = [];
-        
-        foreach ($chunks as $chunk) {
+            // Process document content and generate embeddings automatically
             try {
-                $response = Http::timeout(30)->post($embeddingUrl . '/embed/single', [
-                    'text' => $chunk
+                $fullText = null;
+
+                // Extract text first
+                try {
+                    $fullText = $this->storageService->getDocumentText($document);
+                } catch (\Exception $extractError) {
+                    Log::warning('Text extraction failed for scanner upload', [
+                        'doc_id' => $document->doc_id,
+                        'error' => $extractError->getMessage()
+                    ]);
+                }
+
+                // Process document content and generate embeddings
+                $this->processingService->processDocument($document, $file->getMimeType());
+
+                // Use AI to analyze and auto-fill metadata
+                if ($fullText) {
+                    try {
+                        $aiAnalysis = $this->aiAnalysisService->analyzeDocument(
+                            $document->doc_id,
+                            $fullText,
+                            $document->title
+                        );
+
+                        // Update document with AI suggestions
+                        if (!empty($aiAnalysis['title']) || !empty($aiAnalysis['description'])) {
+                            $updateData = [
+                                'title' => $aiAnalysis['title'] ?? $document->title,
+                                'description' => $aiAnalysis['description'] ?? $document->description,
+                                'ai_suggested_folder' => $aiAnalysis['suggested_folder'] ?? null,
+                            ];
+
+                            if (!empty($aiAnalysis['remarks'])) {
+                                $updateData['remarks'] = $aiAnalysis['remarks'];
+                            }
+
+                            // Match folder intelligently
+                            $folder = $this->folderMatchingService->matchFolderFromAI($aiAnalysis);
+
+                            if ($folder) {
+                                $updateData['folder_id'] = $folder->folder_id;
+                                Log::info('Folder matched for scanner upload', [
+                                    'doc_id' => $document->doc_id,
+                                    'folder_id' => $folder->folder_id,
+                                    'folder_name' => $folder->folder_name,
+                                ]);
+                            }
+
+                            $document->update($updateData);
+                        }
+                    } catch (\Exception $aiError) {
+                        Log::warning('AI auto-fill failed for scanner upload', [
+                            'doc_id' => $document->doc_id,
+                            'error' => $aiError->getMessage()
+                        ]);
+                    }
+                }
+
+                // Log successful upload activity
+                ActivityLog::create([
+                    'user_id' => $systemUserId,
+                    'doc_id' => $document->doc_id,
+                    'activity_type' => 'upload',
+                    'activity_time' => now(),
+                    'activity_details' => 'Document uploaded via scanner: ' . $document->title
                 ]);
 
-                if ($response->successful()) {
-                    $data = $response->json();
-                    $embeddings[] = [
-                        'chunk_text' => $chunk,
-                        'embedding' => $data['embedding'] ?? [],
-                        'model_type' => 'all-MiniLM-L6-v2',
-                        'dimensions' => $data['dimensions'] ?? 384,
-                        'service_response' => true
-                    ];
-                } else {
-                    // Use mock embedding as fallback
-                    $embeddings[] = [
-                        'chunk_text' => $chunk,
-                        'embedding' => $this->generateMockEmbedding($chunk),
-                        'model_type' => 'mock-fallback',
-                        'dimensions' => 384,
-                        'service_response' => false
-                    ];
-                }
             } catch (\Exception $e) {
-                // Use mock embedding as fallback
-                $embeddings[] = [
-                    'chunk_text' => $chunk,
-                    'embedding' => $this->generateMockEmbedding($chunk),
-                    'model_type' => 'mock-fallback',
-                    'dimensions' => 384,
-                    'service_response' => false,
+                Log::error('Scanner document processing failed', [
+                    'doc_id' => $document->doc_id,
                     'error' => $e->getMessage()
-                ];
+                ]);
+                $document->update([
+                    'status' => 'failed',
+                    'remarks' => 'Processing error: ' . $e->getMessage()
+                ]);
             }
+
+            // Return response in format expected by scanner service
+            return response()->json([
+                'success' => true,
+                'message' => 'Scanner document uploaded and processing started',
+                'file' => [
+                    'id' => $document->doc_id,
+                    'original_name' => basename($document->file_path),
+                    'title' => $document->title,
+                    'status' => $document->status,
+                    'created_at' => $document->created_at
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Scanner upload failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Scanner upload failed: ' . $e->getMessage()
+            ], 500);
         }
-        
-        return $embeddings;
     }
 
     /**
-     * Generate mock embedding for fallback
-     */
-    private function generateMockEmbedding(string $text): array
-    {
-        $hash = md5($text);
-        $embedding = [];
-        
-        for ($i = 0; $i < 32; $i += 2) {
-            $hex = substr($hash, $i, 2);
-            $value = (hexdec($hex) / 255.0) * 2.0 - 1.0;
-            $embedding[] = round($value, 6);
-        }
-        
-        while (count($embedding) < 384) {
-            $embedding = array_merge($embedding, $embedding);
-        }
-        
-        return array_slice($embedding, 0, 384);
-    }
 
-    // Get documents with filtering support
+     * Get documents with filtering support
+     */
     public function getDocuments(Request $request)
     {
-        $query = Document::with(['folder']);
-        
-        // Apply filters
-        if ($request->has('folder_id') && $request->folder_id !== null && $request->folder_id !== '') {
-            $query->where('folder_id', $request->folder_id);
-        }
-
-        if ($request->has('year') && $request->year) {
-            $query->whereYear('created_at', $request->year);
-        }
-        
-        if ($request->has('search') && $request->search) {
-            $searchTerm = $request->search;
-            $query->where(function ($q) use ($searchTerm) {
-                // Use LOWER() for case-insensitive search across all database engines
-                $q->whereRaw('LOWER(title) LIKE ?', ['%' . strtolower($searchTerm) . '%'])
-                  ->orWhereRaw('LOWER(remarks) LIKE ?', ['%' . strtolower($searchTerm) . '%']);
-            });
-        }
-        
-        // Apply sorting
-        $sortBy = $request->get('sort_by', 'updated_at');
-        $sortOrder = $request->get('sort_order', 'desc');
-        
-        $documents = $query->orderBy($sortBy, $sortOrder)->get();
-        
+        $documents = $this->queryService->getDocuments($request);
         return response()->json($documents);
     }
 
-    // Get document counts
+    /**
+     * Get document counts
+     */
     public function getDocumentCounts(Request $request)
     {
-        $totalDocuments = Document::count();
-        $documentsByStatus = Document::select('status')
-            ->selectRaw('count(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status')
-            ->toArray();
+        try {
+            $counts = $this->queryService->getDocumentCounts();
+            return response()->json($counts);
+        } catch (\Exception $e) {
+            Log::error('Failed to get document counts', [
+                'error' => $e->getMessage(),
+            ]);
 
-        return response()->json([
-            'total_documents' => $totalDocuments,
-            'documents_by_status' => $documentsByStatus
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve document counts',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    // Get bulk folder document counts (optimized)
+    /**
+     * Get bulk folder document counts (optimized)
+     */
     public function getBulkFolderCounts(Request $request)
     {
         $validated = $request->validate([
@@ -471,19 +395,7 @@ class DocumentController extends Controller
         ]);
 
         try {
-            $counts = Document::select('folder_id')
-                ->selectRaw('count(*) as count')
-                ->whereIn('folder_id', $validated['folder_ids'])
-                ->groupBy('folder_id')
-                ->pluck('count', 'folder_id')
-                ->toArray();
-
-            // Ensure all requested folders have a count (even if 0)
-            $result = [];
-            foreach ($validated['folder_ids'] as $folderId) {
-                $result[$folderId] = $counts[$folderId] ?? 0;
-            }
-
+            $result = $this->queryService->getBulkFolderCounts($validated['folder_ids']);
             return response()->json($result);
         } catch (\Exception $e) {
             return response()->json([
@@ -493,11 +405,13 @@ class DocumentController extends Controller
         }
     }
 
-    // Get single folder document count (optimized)
+    /**
+     * Get single folder document count (optimized)
+     */
     public function getFolderDocumentCount($folderId)
     {
         try {
-            $count = Document::where('folder_id', $folderId)->count();
+            $count = $this->queryService->getFolderDocumentCount($folderId);
             return response()->json(['count' => $count]);
         } catch (\Exception $e) {
             return response()->json([
@@ -507,20 +421,15 @@ class DocumentController extends Controller
         }
     }
 
-
     /**
      * Show AI processing page with latest uploaded document
      */
     public function aiProcessing(Request $request)
     {
-        // Get the latest uploaded document by the current user with 'processing' status
-        $latestDocument = Document::where('created_by', auth()->id())
-            ->whereIn('status', ['processing', 'processed'])
-            ->latest('created_at')
-            ->first();
-            
+        $latestDocument = $this->queryService->getLatestProcessingDocument(auth()->id());
+
         $documentData = [];
-        
+
         if ($latestDocument) {
             $documentData = [
                 'doc_id' => $latestDocument->doc_id,
@@ -531,7 +440,6 @@ class DocumentController extends Controller
                 'filePath' => $latestDocument->file_path,
             ];
         } else {
-            // Fallback to URL parameters if no document found
             $documentData = [
                 'doc_id' => $request->query('docId', null),
                 'fileName' => $request->query('fileName', 'No file selected'),
@@ -548,29 +456,15 @@ class DocumentController extends Controller
 
     /**
      * Get categories for AI suggestions
+     * Note: Categories system was removed - returning empty array for compatibility
      */
     public function getAICategories()
     {
-        try {
-            $categories = \App\Models\Category::select('category_id', 'category_name', 'description')
-                ->orderBy('category_name')
-                ->get()
-                ->toArray();
-
-            return response()->json([
-                'success' => true,
-                'data' => $categories
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to get categories for AI', [
-                'error' => $e->getMessage()
-            ]);
-            
-            return response()->json([
-                'error' => 'Failed to retrieve categories',
-                'message' => $e->getMessage()
-            ], 500);
-        }
+        // Categories system removed - folders act as categories now
+        return response()->json([
+            'success' => true,
+            'data' => []
+        ]);
     }
 
     /**
@@ -592,7 +486,7 @@ class DocumentController extends Controller
             Log::error('Failed to get folders for AI', [
                 'error' => $e->getMessage()
             ]);
-            
+
             return response()->json([
                 'error' => 'Failed to retrieve folders',
                 'message' => $e->getMessage()
@@ -613,34 +507,16 @@ class DocumentController extends Controller
                 'model_used' => 'required|string'
             ]);
 
-            $document = Document::findOrFail($validated['doc_id']);
-            
-            // Clear existing embeddings for this document
-            DocumentEmbedding::where('doc_id', $validated['doc_id'])->delete();
-            
-            // Store new embeddings
-            foreach ($validated['embeddings'] as $index => $embeddingData) {
-                DocumentEmbedding::create([
-                    'doc_id' => $validated['doc_id'],
-                    'chunk_index' => $index,
-                    'chunk_text' => $embeddingData['chunk_text'],
-                    'embedding_vector' => json_encode($embeddingData['embedding']),
-                    'metadata' => [
-                        'model_type' => $validated['model_used'],
-                        'embedding_dimensions' => count($embeddingData['embedding']),
-                        'chunk_length' => strlen($embeddingData['chunk_text']),
-                        'generated_at' => now()->toISOString(),
-                        'service_url' => env('AI_BRIDGE_URL', 'http://127.0.0.1:5003'),
-                        'service_response' => true
-                    ],
-                    'created_at' => now(),
-                ]);
-            }
+            $totalStored = $this->queryService->storeEmbeddings(
+                $validated['doc_id'],
+                $validated['embeddings'],
+                $validated['model_used']
+            );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Embeddings stored successfully',
-                'total_stored' => count($validated['embeddings'])
+                'total_stored' => $totalStored
             ]);
 
         } catch (\Exception $e) {
@@ -648,10 +524,42 @@ class DocumentController extends Controller
                 'error' => $e->getMessage(),
                 'doc_id' => $request->get('doc_id')
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to store embeddings',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get document text for AI processing
+     */
+    public function getDocumentText($docId)
+    {
+        try {
+            $document = Document::findOrFail($docId);
+            $fullText = $this->storageService->getDocumentText($document);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'text' => $fullText,
+                    'length' => strlen($fullText),
+                    'doc_id' => $docId
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get document text', [
+                'error' => $e->getMessage(),
+                'doc_id' => $docId
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to get document text',
                 'message' => $e->getMessage()
             ], 500);
         }
@@ -663,36 +571,37 @@ class DocumentController extends Controller
     public function getEmbeddings($docId)
     {
         try {
-            $document = Document::findOrFail($docId);
-            
-            $embeddings = DocumentEmbedding::where('doc_id', $docId)
-                ->orderBy('chunk_index')
-                ->get()
-                ->map(function ($embedding) {
-                    return [
-                        'embedding_id' => $embedding->embedding_id,
-                        'chunk_index' => $embedding->chunk_index,
-                        'chunk_text' => $embedding->chunk_text,
-                        'embedding_vector' => json_decode($embedding->embedding_vector),
-                        'metadata' => $embedding->metadata,
-                        'created_at' => $embedding->created_at
-                    ];
-                });
-
-            return response()->json([
-                'success' => true,
-                'doc_id' => $docId,
-                'document_title' => $document->title,
-                'total_embeddings' => $embeddings->count(),
-                'embeddings' => $embeddings
-            ]);
+            $result = $this->queryService->getEmbeddings($docId);
+            return response()->json($result);
 
         } catch (\Exception $e) {
             Log::error('Failed to get embeddings', [
                 'error' => $e->getMessage(),
                 'doc_id' => $docId
             ]);
-            
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to retrieve embeddings',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all document embeddings for semantic search
+     */
+    public function getAllEmbeddings()
+    {
+        try {
+            $result = $this->queryService->getAllEmbeddings();
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get all embeddings', [
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve embeddings',
@@ -707,9 +616,7 @@ class DocumentController extends Controller
     public function show($id)
     {
         try {
-            $document = Document::with(['folder'])
-                ->where('doc_id', $id)
-                ->first();
+            $document = $this->queryService->getDocument($id);
 
             if (!$document) {
                 return response()->json([
@@ -740,7 +647,7 @@ class DocumentController extends Controller
                 'doc_id' => $id,
                 'error' => $e->getMessage()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve document'
@@ -755,8 +662,7 @@ class DocumentController extends Controller
     {
         try {
             $document = Document::findOrFail($id);
-            
-            // Validate the request data
+
             $validated = $request->validate([
                 'title' => 'sometimes|string|max:255',
                 'description' => 'sometimes|string|max:1000',
@@ -766,18 +672,21 @@ class DocumentController extends Controller
                 'file_path' => 'sometimes|string|max:500',
             ]);
 
-            // Update the document with AI-suggested metadata (status is protected from AI changes)
+            $user = $request->user();
+            if (!$user->can_edit && $user->role !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have permission to edit documents'
+                ], 403);
+            }
+
             $document->update($validated);
-            
+
             Log::info('Document metadata updated by AI', [
                 'doc_id' => $id,
                 'updated_fields' => array_keys($validated),
-                'new_title' => $document->title,
-                'new_category_id' => $document->category_id,
-                'new_folder_id' => $document->folder_id,
-                'new_status' => $document->status
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Document metadata updated successfully by AI',
@@ -790,27 +699,26 @@ class DocumentController extends Controller
                     'remarks' => $document->remarks
                 ]
             ]);
-            
+
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Document not found'
             ], 404);
-            
+
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
                 'errors' => $e->errors()
             ], 422);
-            
+
         } catch (\Exception $e) {
             Log::error('Error updating document metadata', [
                 'doc_id' => $id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update document metadata'
@@ -826,100 +734,29 @@ class DocumentController extends Controller
         try {
             $document = Document::findOrFail($id);
             
-            // Check if user has permission to view this document
-            // You can add authorization logic here if needed
-            
-            $filePath = $document->file_path;
-            $storagePath = Storage::disk('documents')->path($filePath);
-            
-            // Check if file exists
-            if (!Storage::disk('documents')->exists($filePath)) {
+            $user = auth()->user();
+            if (!$user->can_view && $user->role !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Document file not found'
-                ], 404)->header('Access-Control-Allow-Origin', '*');
+                    'error' => 'You do not have permission to view documents'
+                ], 403);
             }
-            
-            // Get file info
-            $mimeType = Storage::disk('documents')->mimeType($filePath);
-            $size = Storage::disk('documents')->size($filePath);
-            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-            
-            // Handle different file types
-            switch ($extension) {
-                case 'pdf':
-                    // For PDFs, return the file directly with proper headers
-                    return response()->file($storagePath, [
-                        'Content-Type' => 'application/pdf',
-                        'Content-Disposition' => 'inline; filename="' . basename($document->title) . '.pdf"',
-                        'Access-Control-Allow-Origin' => '*',
-                        'Access-Control-Allow-Methods' => 'GET',
-                        'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
-                        'Cache-Control' => 'no-cache, must-revalidate'
-                    ]);
-                    
-                case 'jpg':
-                case 'jpeg':
-                case 'png':
-                case 'gif':
-                case 'bmp':
-                case 'webp':
-                    // For images, return the file directly with proper headers
-                    return response()->file($storagePath, [
-                        'Content-Type' => $mimeType,
-                        'Content-Disposition' => 'inline; filename="' . basename($document->title) . '.' . $extension . '"',
-                        'Access-Control-Allow-Origin' => '*',
-                        'Access-Control-Allow-Methods' => 'GET',
-                        'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
-                        'Cache-Control' => 'no-cache, must-revalidate'
-                    ]);
-                    
-                case 'txt':
-                case 'md':
-                case 'csv':
-                    // For text files, read and return content
-                    $content = Storage::disk('documents')->get($filePath);
-                    return response()->json([
-                        'success' => true,
-                        'content' => $content,
-                        'type' => 'text',
-                        'mime_type' => $mimeType,
-                        'size' => $size
-                    ])->header('Access-Control-Allow-Origin', '*');
-                    
-                case 'doc':
-                case 'docx':
-                    // For Word documents, you might want to convert to text or PDF
-                    // For now, just provide download link
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'Word documents cannot be previewed. Please download to view.',
-                        'file_type' => $extension
-                    ])->header('Access-Control-Allow-Origin', '*');
-                    
-                default:
-                    // For unsupported formats, provide download option
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'File type not supported for preview',
-                        'file_type' => $extension,
-                        'mime_type' => $mimeType
-                    ])->header('Access-Control-Allow-Origin', '*');
-            }
-            
+
+            $fileInfo = $this->storageService->getDocumentContent($document);
+            return $this->storageService->getFileResponse($document, $fileInfo);
+
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Document not found'
             ], 404);
-            
+
         } catch (\Exception $e) {
             Log::error('Error getting document content', [
                 'doc_id' => $id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to load document content: ' . $e->getMessage()
@@ -934,61 +771,21 @@ class DocumentController extends Controller
     {
         try {
             $document = Document::findOrFail($id);
-            
-            $filePath = $document->file_path;
-            
-            // Check if file exists
-            if (!Storage::disk('documents')->exists($filePath)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Document file not found'
-                ], 404);
-            }
-            
-            // Get file info
-            $mimeType = Storage::disk('documents')->mimeType($filePath);
-            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-            
-            // For text files, return content directly
-            if (in_array($extension, ['txt', 'md', 'csv', 'json', 'xml', 'html'])) {
-                $content = Storage::disk('documents')->get($filePath);
-                return response()->json([
-                    'success' => true,
-                    'content' => $content,
-                    'type' => 'text',
-                    'mime_type' => $mimeType,
-                    'extension' => $extension
-                ]);
-            }
-            
-            // For binary files (PDF, images), encode as base64
-            $fileContent = Storage::disk('documents')->get($filePath);
-            $base64Content = base64_encode($fileContent);
-            
-            return response()->json([
-                'success' => true,
-                'content' => $base64Content,
-                'type' => 'binary',
-                'mime_type' => $mimeType,
-                'extension' => $extension,
-                'encoding' => 'base64',
-                'filename' => $document->title,
-                'size' => strlen($fileContent)
-            ]);
-            
+            $result = $this->storageService->streamContent($document);
+            return response()->json($result);
+
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Document not found'
             ], 404);
-            
+
         } catch (\Exception $e) {
             Log::error('Error streaming document content', [
                 'doc_id' => $id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to load document content: ' . $e->getMessage()
@@ -1014,8 +811,7 @@ class DocumentController extends Controller
                 return response()->json(['success' => false, 'error' => 'Document not found'], 404);
             }
 
-            // Log the download activity
-            \App\Models\ActivityLog::create([
+            ActivityLog::create([
                 'user_id' => $user->user_id,
                 'doc_id' => $document->doc_id,
                 'activity_type' => 'download',
@@ -1031,238 +827,330 @@ class DocumentController extends Controller
     }
 
     /**
-     * Call AI Bridge service for document analysis (local, offline)
+     * Delete a document (soft delete)
      */
-    private function analyzeWithAIBridge(int $docId): array
+    public function destroy($docId)
     {
         try {
-            $aiBridgeUrl = env('AI_BRIDGE_URL', 'http://localhost:5003');
+            $document = Document::where('doc_id', $docId)->first();
 
-            $response = Http::timeout(30)->post("{$aiBridgeUrl}/api/documents/analyze", [
-                'docId' => $docId
+            if (!$document) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Document not found'
+                ], 404);
+            }
+
+            $user = auth()->user();
+            if (!$user->can_delete && $user->role !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have permission to delete documents'
+                ], 403);
+            }
+
+            // Log the activity BEFORE deleting
+            ActivityLog::create([
+                'user_id' => auth()->id(),
+                'doc_id' => $docId,
+                'activity_type' => 'delete',
+                'activity_time' => now(),
+                'activity_details' => 'Document deleted: ' . $document->title
             ]);
 
-            if (!$response->successful()) {
-                throw new \Exception('AI Bridge error: HTTP ' . $response->status());
-            }
+            // Delete physical file and embeddings
+            $this->storageService->deleteDocument($document);
 
-            $data = $response->json();
+            // Delete the document record
+            $document->delete();
 
-            if (!$data['success']) {
-                throw new \Exception($data['message'] ?? 'AI Bridge analysis failed');
-            }
+            Log::info('Document deleted successfully', [
+                'doc_id' => $docId,
+                'title' => $document->title,
+            ]);
 
-            return [
-                'title' => $data['suggested_title'] ?? null,
-                'description' => $data['suggested_description'] ?? null,
-            ];
+            return response()->json([
+                'success' => true,
+                'message' => 'Document deleted successfully'
+            ]);
 
         } catch (\Exception $e) {
-            \Log::error('AI Bridge analysis failed', ['error' => $e->getMessage(), 'doc_id' => $docId]);
-            throw $e;
+            Log::error('Document deletion failed', [
+                'doc_id' => $docId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete document',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
     /**
-     * Call Groq API for document analysis (online)
+     * Archive a document
      */
-    private function analyzeWithGroq(string $fullText, string $originalTitle): array
+    public function archive($id)
     {
         try {
-            $groqApiKey = env('GROQ_API_KEY');
-            $groqModel = env('GROQ_MODEL', 'llama-3.3-70b-versatile');
+            $document = Document::findOrFail($id);
 
-            if (!$groqApiKey) {
-                throw new \Exception('Groq API key not configured');
-            }
-
-            // Limit text to first 3000 characters for analysis (to save tokens)
-            $textSample = substr($fullText, 0, 3000);
-
-            $systemPrompt = 'You are an AI assistant specialized in analyzing legal and business documents. Your task is to analyze document content and extract key metadata in JSON format.';
-
-            $userPrompt = <<<EOT
-Analyze this document and provide metadata in JSON format with these fields:
-
-1. "title": A concise, descriptive title (max 100 chars)
-2. "description": A brief summary of the document content (max 500 chars)
-3. "category": The document category (choose from: Contract, Policy, Report, Legal Document, Memorandum, Letter, Form, Invoice, Agreement, Other)
-4. "document_type": Specific type (e.g., "Employment Contract", "Privacy Policy", "Financial Report", etc.)
-5. "key_topics": Array of 3-5 main topics/keywords
-6. "suggested_folder": Suggested folder name for organization
-7. "urgency": "high", "medium", or "low"
-8. "requires_review": true/false - if document needs legal/compliance review
-
-Document Title: {$originalTitle}
-
-Document Content:
-{$textSample}
-
-Return ONLY valid JSON, no other text.
-EOT;
-
-            \Log::info('Calling Groq API for document analysis', [
-                'original_title' => $originalTitle,
-                'text_length' => strlen($fullText),
-                'sample_length' => strlen($textSample)
+            Log::info('Archive attempt started', [
+                'doc_id' => $id,
+                'current_status' => $document->status,
+                'current_folder_id' => $document->folder_id
             ]);
 
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $groqApiKey,
-                'Content-Type' => 'application/json',
-            ])
-            ->timeout(30)
-            ->post('https://api.groq.com/openai/v1/chat/completions', [
-                'model' => $groqModel,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userPrompt]
-                ],
-                'temperature' => 0.3, // Lower temperature for more consistent output
-                'max_tokens' => 1000,
-                'response_format' => ['type' => 'json_object']
-            ]);
-
-            if (!$response->successful()) {
-                $errorBody = $response->json();
-                throw new \Exception('Groq API error: ' . ($errorBody['error']['message'] ?? 'Unknown error'));
+            $user = auth()->user();
+            if (!$user->can_archive && $user->role !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have permission to archive documents'
+                ], 403);
             }
 
-            $data = $response->json();
-            $aiResponse = $data['choices'][0]['message']['content'] ?? '';
+            // Keep folder_id and only change status to archived
+            $document->status = 'archived';
+            $saved = $document->save();
 
-            // Parse JSON response
-            $analysis = json_decode($aiResponse, true);
-
-            if (!$analysis) {
-                throw new \Exception('Invalid JSON response from Groq AI');
-            }
-
-            \Log::info('Groq AI document analysis completed', [
-                'analysis' => $analysis,
-                'tokens_used' => $data['usage'] ?? []
+            Log::info('Archive attempt completed', [
+                'doc_id' => $id,
+                'save_result' => $saved,
+                'new_status' => $document->status,
+                'folder_id' => $document->folder_id
             ]);
 
-            return $analysis;
+            // Verify the change was saved
+            $verifyDocument = Document::find($id);
+            Log::info('Archive verification', [
+                'doc_id' => $id,
+                'verified_status' => $verifyDocument->status,
+                'verified_folder_id' => $verifyDocument->folder_id
+            ]);
 
+            ActivityLog::create([
+                'user_id' => auth()->id(),
+                'doc_id' => $document->doc_id,
+                'activity_type' => 'archive',
+                'activity_time' => now(),
+                'activity_details' => "Document '{$document->title}' archived (folder ID: {$document->folder_id})"
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document archived successfully',
+                'data' => $document->fresh()
+            ]);
         } catch (\Exception $e) {
-            \Log::error('Groq AI document analysis failed', [
+            Log::error('Failed to archive document', [
+                'doc_id' => $id,
                 'error' => $e->getMessage(),
-                'original_title' => $originalTitle
+                'trace' => $e->getTraceAsString()
             ]);
-            throw $e;
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to archive document',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
     /**
-     * Intelligently match folder from AI analysis based on database folders
+     * Restore an archived document
      */
-    private function matchFolderFromAI(array $aiAnalysis): ?\App\Models\Folder
+    public function restore($id)
     {
-        // Get all available folders from database
-        $availableFolders = \App\Models\Folder::all();
+        try {
+            $document = Document::findOrFail($id);
 
-        if ($availableFolders->isEmpty()) {
-            \Log::warning('No folders available in database for matching');
-            return null;
-        }
-
-        \Log::info('Starting intelligent folder matching', [
-            'available_folders' => $availableFolders->pluck('folder_name')->toArray(),
-            'ai_suggested_folder' => $aiAnalysis['suggested_folder'] ?? null,
-            'ai_category' => $aiAnalysis['category'] ?? null,
-            'ai_document_type' => $aiAnalysis['document_type'] ?? null
-        ]);
-
-        $folder = null;
-
-        // Strategy 1: Exact match on suggested_folder
-        if (!empty($aiAnalysis['suggested_folder'])) {
-            $suggestedFolder = strtolower(trim($aiAnalysis['suggested_folder']));
-
-            foreach ($availableFolders as $dbFolder) {
-                $dbFolderName = strtolower(trim($dbFolder->folder_name));
-
-                // Exact match
-                if ($dbFolderName === $suggestedFolder) {
-                    \Log::info('Folder matched: Exact match', ['folder' => $dbFolder->folder_name]);
-                    return $dbFolder;
-                }
-
-                // Contains match (bidirectional)
-                if (strpos($dbFolderName, $suggestedFolder) !== false || strpos($suggestedFolder, $dbFolderName) !== false) {
-                    \Log::info('Folder matched: Partial match', ['folder' => $dbFolder->folder_name]);
-                    $folder = $dbFolder;
-                    break;
-                }
+            if ($document->status !== 'archived') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Document is not archived'
+                ], 400);
             }
+
+            $document->status = 'active';
+            $document->save();
+
+            ActivityLog::create([
+                'user_id' => auth()->id(),
+                'doc_id' => $document->doc_id,
+                'activity_type' => 'restore',
+                'activity_time' => now(),
+                'activity_details' => "Document '{$document->title}' restored from archive"
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document restored successfully',
+                'data' => $document
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to restore document', [
+                'doc_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to restore document',
+                'error' => $e->getMessage()
+            ], 500);
         }
+    }
 
-        // Strategy 2: Match by document_type using keyword mapping
-        if (!$folder && !empty($aiAnalysis['document_type'])) {
-            $docType = strtolower(trim($aiAnalysis['document_type']));
+    /**
+     * Bulk archive documents
+     */
+    public function bulkArchive(Request $request)
+    {
+        try {
+            $request->validate([
+                'document_ids' => 'required|array',
+                'document_ids.*' => 'integer|exists:documents,doc_id'
+            ]);
 
-            // Define keyword to folder mappings based on your database folders
-            // This maps common legal document type keywords to your actual folder names
-            $keywordMappings = [
-                // MOA folder keywords
-                'memorandum' => 'MOA',
-                'agreement' => 'MOA',
-                'resolution' => 'MOA',
-                'moa' => 'MOA',
-                'memorandum of agreement' => 'MOA',
+            $documentIds = $request->document_ids;
+            $archivedCount = 0;
 
-                // Criminal folder keywords
-                'criminal' => 'CRIMINAL',
-                'felony' => 'CRIMINAL',
-                'misdemeanor' => 'CRIMINAL',
-                'arrest' => 'CRIMINAL',
-                'indictment' => 'CRIMINAL',
+            foreach ($documentIds as $docId) {
+                $document = Document::find($docId);
+                if ($document && $document->status !== 'archived') {
+                    // Keep folder_id and only change status to archived
+                    $document->status = 'archived';
+                    $document->save();
+                    $archivedCount++;
 
-                // Civil Cases folder keywords
-                'civil' => 'Civil Cases',
-                'lawsuit' => 'Civil Cases',
-                'complaint' => 'Civil Cases',
-                'petition' => 'Civil Cases',
-                'litigation' => 'Civil Cases',
-            ];
-
-            foreach ($keywordMappings as $keyword => $targetFolderName) {
-                if (strpos($docType, $keyword) !== false) {
-                    // Find folder by name
-                    $matchedFolder = $availableFolders->first(function($f) use ($targetFolderName) {
-                        return strtolower(trim($f->folder_name)) === strtolower(trim($targetFolderName));
-                    });
-
-                    if ($matchedFolder) {
-                        \Log::info('Folder matched: Document type keyword', [
-                            'keyword' => $keyword,
-                            'folder' => $matchedFolder->folder_name
-                        ]);
-                        return $matchedFolder;
-                    }
-                }
-            }
-        }
-
-        // Strategy 3: Match by category
-        if (!$folder && !empty($aiAnalysis['category'])) {
-            $category = \App\Models\Category::where('category_name', 'LIKE', '%' . $aiAnalysis['category'] . '%')
-                ->orWhere('category_name', 'LIKE', '%' . $aiAnalysis['document_type'] . '%')
-                ->first();
-
-            if ($category) {
-                $folder = \App\Models\Folder::where('category_id', $category->category_id)->first();
-                if ($folder) {
-                    \Log::info('Folder matched: Category match', [
-                        'category' => $category->category_name,
-                        'folder' => $folder->folder_name
+                    ActivityLog::create([
+                        'user_id' => auth()->id(),
+                        'doc_id' => $docId,
+                        'activity_type' => 'archive',
+                        'activity_time' => now(),
+                        'activity_details' => "Document '{$document->title}' archived (folder ID: {$document->folder_id}) (bulk operation)"
                     ]);
                 }
             }
-        }
 
-        return $folder;
+            return response()->json([
+                'success' => true,
+                'message' => "{$archivedCount} documents archived successfully",
+                'archived_count' => $archivedCount
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to bulk archive documents', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to archive documents',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
+    /**
+     * Bulk restore documents
+     */
+    public function bulkRestore(Request $request)
+    {
+        try {
+            $request->validate([
+                'document_ids' => 'required|array',
+                'document_ids.*' => 'integer|exists:documents,doc_id'
+            ]);
+
+            $documentIds = $request->document_ids;
+            $restoredCount = 0;
+
+            foreach ($documentIds as $docId) {
+                $document = Document::find($docId);
+                if ($document && $document->status === 'archived') {
+                    $document->status = 'active';
+                    $document->save();
+                    $restoredCount++;
+
+                    ActivityLog::create([
+                        'user_id' => auth()->id(),
+                        'doc_id' => $docId,
+                        'activity_type' => 'restore',
+                        'activity_time' => now(),
+                        'activity_details' => "Document '{$document->title}' restored (bulk operation)"
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$restoredCount} documents restored successfully",
+                'restored_count' => $restoredCount
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to bulk restore documents', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to restore documents',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Bulk delete documents
+     */
+    public function bulkDelete(Request $request)
+    {
+        try {
+            $request->validate([
+                'document_ids' => 'required|array',
+                'document_ids.*' => 'integer|exists:documents,doc_id'
+            ]);
+
+            $documentIds = $request->document_ids;
+            $deletedCount = 0;
+
+            foreach ($documentIds as $docId) {
+                $document = Document::find($docId);
+                if ($document) {
+                    // Log before deletion
+                    ActivityLog::create([
+                        'user_id' => auth()->id(),
+                        'doc_id' => $docId,
+                        'activity_type' => 'delete',
+                        'activity_time' => now(),
+                        'activity_details' => "Document '{$document->title}' deleted (bulk operation)"
+                    ]);
+
+                    // Delete file and embeddings
+                    $this->storageService->deleteDocument($document);
+
+                    // Delete document record
+                    $document->delete();
+                    $deletedCount++;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$deletedCount} documents deleted successfully",
+                'deleted_count' => $deletedCount
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to bulk delete documents', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete documents',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

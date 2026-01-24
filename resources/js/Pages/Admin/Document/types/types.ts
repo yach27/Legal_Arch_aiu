@@ -30,11 +30,17 @@ export interface Folder {
 export interface Document {
   doc_id: number;
   title: string;
+  description?: string;
   file_path: string;
   created_by: string;
   status: 'active' | 'draft' | 'archived' | 'pending';
   folder_id: number | null;
-  remarks: string;
+  folder?: Folder;
+  remarks?: string;
+  physical_location?: string;
+  ai_suggested_folder?: string;
+  document_ref_id?: string;
+  user?: User;
   created_at: string;
   updated_at: string;
 }
@@ -91,6 +97,8 @@ export interface FolderCardProps {
 
 export interface DocumentListItemProps {
   document: Document;
+  folders?: Array<{ folder_id: number; folder_name: string }>;
+  onDocumentUpdated?: () => void;
 }
 
 export interface BreadcrumbNavProps {
@@ -103,6 +111,7 @@ export interface DocumentFilters {
   folder_id?: number;
   year?: number;
   search_term?: string;
+  status?: string;
 }
 
 export interface SortOptions {

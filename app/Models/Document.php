@@ -18,7 +18,10 @@ class Document extends Model
         'created_by',
         'status',
         'folder_id',
+        'ai_suggested_folder',
         'remarks',
+        'physical_location',
+        'document_ref_id',
     ];
 
     protected $casts = [

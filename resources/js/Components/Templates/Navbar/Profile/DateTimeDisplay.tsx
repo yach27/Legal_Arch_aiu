@@ -36,23 +36,32 @@ const DateTimeDisplay: FC = () => {
 
     return (
         <>
-            <div className="flex items-center space-x-3 bg-gray-50 px-4 py-2 rounded-lg border">
+            <div
+                className="flex items-center space-x-3 px-4 py-2 rounded-xl border"
+                style={{
+                    background: 'rgba(255, 255, 255, 0.4)',
+                    backdropFilter: 'blur(15px)',
+                    WebkitBackdropFilter: 'blur(15px)',
+                    borderColor: 'rgba(255, 255, 255, 0.5)',
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)'
+                }}
+            >
                 <div className="text-center">
-                    <div className="text-lg font-bold text-gray-800 tracking-wide">
+                    <div className="text-lg font-bold text-gray-900 tracking-wide">
                         {formatDay(currentDate)}
                     </div>
-                    <div className="text-sm text-gray-600 font-medium">
+                    <div className="text-sm text-gray-700 font-medium">
                         {formatDate(currentDate)}
                     </div>
                 </div>
                 <button
                     onClick={toggleCalendar}
-                    className="text-gray-500 hover:text-blue-500 transition-colors cursor-pointer"
+                    className="text-green-600 hover:text-green-800 transition-colors cursor-pointer"
                 >
                     <CalendarIcon size={20} />
                 </button>
             </div>
-            
+
             <Calendar isOpen={isCalendarOpen} onClose={closeCalendar} />
         </>
     );

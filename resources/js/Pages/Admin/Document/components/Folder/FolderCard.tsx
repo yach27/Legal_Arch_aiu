@@ -7,6 +7,7 @@ import DocumentMenu from "../MainDoc/DocumentMenu";
 import RenameFolderModal from "./RenameFolderModal";
 import DeleteFolderDialog from "./DeleteFolderDialog";
 import FolderPropertiesModal from "./FolderPropertiesModal";
+import ArchiveDocumentDialog from "../MainDoc/ArchiveDocumentDialog";
 import folderService from "../../services/folderService";
 import realDocumentService from "../../services/realDocumentService";
 
@@ -14,7 +15,7 @@ const FolderCard: React.FC<FolderCardProps> = ({
   folder,
   onFolderClick,
   documentCount,
-  onFolderUpdated, // Add callback for when folder is updated
+  onFolderUpdated,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openDocMenuId, setOpenDocMenuId] = useState<number | null>(null);
@@ -24,10 +25,13 @@ const FolderCard: React.FC<FolderCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [isClicked, setIsClicked] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [selectedDocForArchive, setSelectedDocForArchive] = useState<Document | null>(null);
 
-  // Load documents for this folder - Optimized
+  // Load documents for this folder
   const loadFolderDocuments = async (): Promise<void> => {
-    if (loadingDocs) return; // Prevent multiple simultaneous requests
+    if (loadingDocs) return;
 
     setLoadingDocs(true);
     try {
@@ -43,7 +47,7 @@ const FolderCard: React.FC<FolderCardProps> = ({
 
   // Handle expand/collapse toggle
   const handleExpandToggle = (event: React.MouseEvent): void => {
-    event.stopPropagation(); // Prevent folder navigation
+    event.stopPropagation();
     if (!isExpanded && documents.length === 0) {
       loadFolderDocuments();
     }
@@ -51,6 +55,7 @@ const FolderCard: React.FC<FolderCardProps> = ({
   };
 
   const handleCardClick = (): void => {
+    setIsClicked(true);
     onFolderClick(folder);
   };
 
@@ -125,6 +130,13 @@ const FolderCard: React.FC<FolderCardProps> = ({
         console.log('Edit document:', document.title);
         // TODO: Open document edit modal
         break;
+      case 'archive':
+        setSelectedDocForArchive(document);
+        setArchiveDialogOpen(true);
+        break;
+      case 'restore':
+        handleRestoreDocument(document);
+        break;
       case 'delete':
         console.log('Delete document:', document.title);
         // TODO: Open document delete confirmation
@@ -132,12 +144,48 @@ const FolderCard: React.FC<FolderCardProps> = ({
     }
   };
 
+  const handleArchiveDocument = async (): Promise<void> => {
+    if (!selectedDocForArchive) return;
+
+    try {
+      await realDocumentService.archiveDocument(selectedDocForArchive.doc_id);
+      // Reload documents to reflect the change
+      await loadFolderDocuments();
+      if (onFolderUpdated) {
+        onFolderUpdated();
+      }
+    } catch (error) {
+      throw new Error('Failed to archive document. Please try again.');
+    }
+  };
+
+  const handleRestoreDocument = async (document: Document): Promise<void> => {
+    try {
+      await realDocumentService.restoreDocument(document.doc_id);
+      // Reload documents to reflect the change
+      await loadFolderDocuments();
+      if (onFolderUpdated) {
+        onFolderUpdated();
+      }
+    } catch (error) {
+      console.error('Failed to restore document:', error);
+    }
+  };
+
+  if (isClicked) {
+    return null;
+  }
+
   return (
-    <div
-      className={`relative bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all duration-200 group ${
-        isExpanded ? 'shadow-md' : ''
-      }`}
-    >
+    <div className="relative group h-full">
+      {/* Animated glow effect on hover */}
+      <div className="absolute -inset-0.5 bg-gradient-to-r from-[#228B22] via-[#FBEC5D] to-[#228B22] rounded-2xl opacity-0 group-hover:opacity-30 blur-xl transition-all duration-500"></div>
+
+      <div
+        className={`relative h-full bg-gradient-to-br from-[#228B22] to-[#1a6b1a] rounded-2xl p-6 border border-white/10 hover:border-white/20 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 ${
+          isExpanded ? 'shadow-2xl scale-[1.02]' : ''
+        }`}
+      >
       {/* Folder Header - Click to navigate */}
       <div 
         className="cursor-pointer"
@@ -151,46 +199,60 @@ const FolderCard: React.FC<FolderCardProps> = ({
           }
         }}
       >
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-            <div className="p-2 bg-blue-50 rounded-lg flex-shrink-0">
-              <Folder className="w-6 h-6 text-blue-600" />
+        <div className="flex items-start justify-between mb-4 gap-2">
+          <div className="flex items-start gap-4 min-w-0 flex-1">
+            {/* Modern folder icon with gradient and shine */}
+            <div className="relative flex-shrink-0">
+              <div className="absolute inset-0 bg-[#FBEC5D]/30 rounded-2xl blur-md group-hover:blur-lg transition-all"></div>
+              <div className="relative p-3 bg-gradient-to-br from-white/20 to-white/5 rounded-2xl backdrop-blur-sm border border-white/10 group-hover:border-[#FBEC5D]/50 transition-all transform group-hover:scale-110 group-hover:rotate-3">
+                {/* Inner shine effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent rounded-2xl opacity-50"></div>
+                <Folder className="w-7 h-7 text-[#FBEC5D] relative z-10 drop-shadow-lg" strokeWidth={2.5} />
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors truncate" title={folder.folder_name}>
+
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <h3 className="text-base font-bold text-white group-hover:text-[#FBEC5D] transition-all break-words leading-snug" style={{
+                wordBreak: 'break-word',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                textShadow: '0 2px 8px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.4)'
+              }} title={folder.folder_name}>
                 {folder.folder_name}
               </h3>
-              <p className="text-sm text-gray-500 truncate" title={folder.folder_path}>
+              <p className="text-xs text-white/80 truncate font-medium mt-1" style={{
+                textShadow: '0 1px 3px rgba(0,0,0,0.3)'
+              }} title={folder.folder_path}>
                 {folder.folder_path}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            {/* Expand/Collapse Button */}
-            {documentCount > 0 && (
-              <button
-                className="p-1 rounded-lg hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={handleExpandToggle}
-                type="button"
-                aria-label={isExpanded ? "Collapse documents" : "Show documents"}
-                title={isExpanded ? "Hide documents" : "Show documents"}
-              >
-                {isExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-gray-500" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                )}
-              </button>
-            )}
+          <div className={`flex items-start gap-2 flex-shrink-0 transition-all duration-300 ${menuOpen ? 'w-auto' : 'w-0 group-hover:w-auto overflow-hidden'}`}>
+            {/* Expand/Collapse Button - Modern glass effect */}
+            <button
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/20 transition-all backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-110"
+              onClick={handleExpandToggle}
+              type="button"
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+              title={isExpanded ? "Hide contents" : "Show contents"}
+            >
+              {isExpanded ? (
+                <ChevronUp className="w-4 h-4 text-[#FBEC5D]" strokeWidth={2.5} />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-white" strokeWidth={2.5} />
+              )}
+            </button>
             {/* Menu Button */}
-            <div className="relative">
+            <div className="relative z-50">
               <button
-                className="p-1 rounded-lg hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/20 transition-all backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-110"
                 onClick={handleMenuClick}
                 type="button"
                 aria-label={`More options for ${folder.folder_name}`}
               >
-                <MoreVertical className="w-4 h-4 text-gray-500" />
+                <MoreVertical className="w-4 h-4 text-white" strokeWidth={2.5} />
               </button>
               {menuOpen && (
                 <FolderMenu
@@ -203,87 +265,116 @@ const FolderCard: React.FC<FolderCardProps> = ({
           </div>
         </div>
       </div>
-      <div className="flex justify-between items-center text-sm text-gray-500 mb-2">
-        <span>
-          {documentCount} document{documentCount !== 1 ? "s" : ""}
-        </span>
-        <span title={`Last updated: ${folder.updated_at}`}>
+
+      {/* Modern stats section with badges */}
+      <div className="flex justify-between items-center gap-3 mb-3">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full backdrop-blur-sm border border-white/10">
+          <div className="w-1.5 h-1.5 bg-[#FBEC5D] rounded-full animate-pulse"></div>
+          <span className="text-xs font-bold text-white/90">
+            {documentCount} {documentCount === 1 ? "Document" : "Documents"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-white/60 font-medium" title={`Last updated: ${folder.updated_at}`}>
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
           {formatDate(folder.updated_at)}
-        </span>
+        </div>
       </div>
 
       {/* Expandable Documents Section */}
       {isExpanded && (
-        <div className="border-t border-gray-100 mt-4 pt-4">
-          <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Documents in this folder
-          </h4>
-          
-          {loadingDocs ? (
-            <div className="flex items-center justify-center py-3">
-              <div className="animate-spin rounded-full h-3 w-3 border border-blue-600 border-t-transparent"></div>
-              <span className="ml-2 text-xs text-gray-500">Loading...</span>
-            </div>
-          ) : documents.length === 0 ? (
-            <div className="text-center py-4 text-xs text-gray-500">
-              <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              No documents found in this folder
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto overflow-x-visible">
-              {documents.map((document) => (
-                <div
-                  key={document.doc_id}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group/doc relative"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Handle document click - could open document or show preview
-                    console.log('Document clicked:', document.title);
-                  }}
-                >
-                  <div className="flex-shrink-0">
-                    <FileText className="w-4 h-4 text-green-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate group-hover/doc:text-blue-600 transition-colors">
-                      {document.title}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        document.status === 'active' ? 'bg-green-100 text-green-700' :
-                        document.status === 'draft' ? 'bg-yellow-100 text-yellow-700' :
-                        document.status === 'archived' ? 'bg-gray-100 text-gray-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
-                        {document.status}
-                      </span>
-                      <span>{formatDate(document.created_at)}</span>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0 opacity-0 group-hover/doc:opacity-100 transition-opacity">
-                    <div className="relative">
-                      <button
-                        className="p-1 rounded hover:bg-gray-200"
-                        onClick={(e) => handleDocumentMenuClick(e, document.doc_id)}
-                        title="More options"
-                        type="button"
-                      >
-                        <MoreVertical className="w-3 h-3 text-gray-500" />
-                      </button>
-                      {openDocMenuId === document.doc_id && (
-                        <DocumentMenu
-                          onProperties={() => handleDocumentMenuAction('properties', document)}
-                          onEdit={() => handleDocumentMenuAction('edit', document)}
-                          onDelete={() => handleDocumentMenuAction('delete', document)}
-                        />
-                      )}
-                    </div>
-                  </div>
+        <div className="border-t border-white/20 mt-4 pt-4 animate-in slide-in-from-top duration-300">
+          <div className="relative bg-gradient-to-br from-white/15 to-white/5 backdrop-blur-md rounded-2xl p-5 border border-white/20 shadow-inner">
+            {/* Decorative gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-2xl pointer-events-none"></div>
+
+            <div className="relative">
+              <h4 className="text-sm font-black text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
+                <div className="p-1.5 bg-[#FBEC5D]/20 rounded-lg">
+                  <FileText className="w-4 h-4 text-[#FBEC5D]" strokeWidth={2.5} />
                 </div>
-              ))}
+                Documents
+              </h4>
+
+            {loadingDocs ? (
+              <div className="flex items-center justify-center py-3">
+                <div className="animate-spin rounded-full h-3 w-3 border border-white border-t-transparent"></div>
+                <span className="ml-2 text-xs text-white/80 font-normal">Loading documents...</span>
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="text-center py-4 text-xs text-white/60 font-light">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-white/40" />
+                No documents found in this folder
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-48 overflow-y-auto overflow-x-visible pr-1">
+                {documents.map((document) => (
+                  <div
+                    key={document.doc_id}
+                    className="group/doc relative"
+                  >
+                    {/* Hover glow effect */}
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-[#FBEC5D]/20 to-transparent rounded-xl opacity-0 group-hover/doc:opacity-100 blur-sm transition-all"></div>
+
+                    <div
+                      className="relative flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 hover:border-[#FBEC5D]/30 transition-all cursor-pointer transform hover:scale-[1.02] shadow-sm hover:shadow-md"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('Document clicked:', document.title);
+                      }}
+                    >
+                      {/* Document icon with background */}
+                      <div className="flex-shrink-0 p-2 bg-[#FBEC5D]/10 rounded-lg">
+                        <FileText className="w-4 h-4 text-[#FBEC5D]" strokeWidth={2.5} />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-white truncate group-hover/doc:text-[#FBEC5D] transition-colors">
+                          {document.title}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-white/70 mt-1">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                            document.status === 'active' ? 'bg-[#FBEC5D]/20 text-[#FBEC5D]' :
+                            document.status === 'draft' ? 'bg-yellow-500/20 text-yellow-200' :
+                            document.status === 'archived' ? 'bg-white/10 text-white/60' :
+                            'bg-blue-500/20 text-blue-200'
+                          }`}>
+                            {document.status}
+                          </span>
+                          <span className="font-medium">{formatDate(document.created_at)}</span>
+                        </div>
+                      </div>
+
+                      <div className={`flex-shrink-0 transition-opacity ${openDocMenuId === document.doc_id ? 'opacity-100' : 'opacity-0 group-hover/doc:opacity-100'}`}>
+                        <div className="relative z-50">
+                          <button
+                            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 transition-all"
+                            onClick={(e) => handleDocumentMenuClick(e, document.doc_id)}
+                            title="More options"
+                            type="button"
+                          >
+                            <MoreVertical className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                          </button>
+                        {openDocMenuId === document.doc_id && (
+                          <DocumentMenu
+                            onProperties={() => handleDocumentMenuAction('properties', document)}
+                            onEdit={() => handleDocumentMenuAction('edit', document)}
+                            onDelete={() => handleDocumentMenuAction('delete', document)}
+                            onArchive={() => handleDocumentMenuAction('archive', document)}
+                            onRestore={() => handleDocumentMenuAction('restore', document)}
+                            isArchived={document.status === 'archived'}
+                          />
+                        )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -308,6 +399,19 @@ const FolderCard: React.FC<FolderCardProps> = ({
         folder={folder}
         documentCount={documentCount}
       />
+
+      {selectedDocForArchive && (
+        <ArchiveDocumentDialog
+          isOpen={archiveDialogOpen}
+          onClose={() => {
+            setArchiveDialogOpen(false);
+            setSelectedDocForArchive(null);
+          }}
+          onArchive={handleArchiveDocument}
+          document={selectedDocForArchive}
+        />
+      )}
+      </div>
     </div>
   );
 };

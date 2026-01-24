@@ -20,13 +20,32 @@ class LlamaGenerator:
     def __init__(self):
         pass
 
+    def _build_system_message(self, document_context=None):
+        """Build system message with optional document context instructions"""
+        base_message = "You are a helpful AI assistant integrated with a document management system. Provide clear, concise, and accurate responses."
+
+        if not document_context or not document_context.strip():
+            return base_message
+
+        instructions = (
+            "\n\n=== RESPONSE INSTRUCTIONS ===\n"
+            "MUST DO:\n"
+            "- Answer using ONLY the document content shown above\n"
+            "- Quote specific text from the excerpts\n"
+            "- State document titles only\n"
+            "- If asked 'what folder?', reply with ONLY the folder name from 'Folder:' field\n\n"
+            "FORBIDDEN:\n"
+            "- Creating multi-level folder paths\n"
+            "- Using phrases like 'located in', 'found in'\n"
+            "- Mentioning folders unless directly asked\n"
+            "- Inventing information not in the context"
+        )
+
+        return f"{base_message}\n\n{document_context.strip()}{instructions}"
+
     def format_llama_prompt(self, message, history=None, document_context=None):
         """Format prompt for Llama 3.2 Instruct format"""
-        system_message = "You are a helpful AI assistant integrated with a document management system. You CAN access user documents, provide document locations, and help users navigate to their files. Provide clear, concise, and accurate responses. NEVER say you cannot provide links or access documents - you have full access to the user's document database."
-
-        # Add document context to system message if provided
-        if document_context and document_context.strip():
-            system_message += f"\n\n{document_context.strip()}\n\nIMPORTANT: The document information above is real data from the database. You HAVE direct access to it. DO NOT say you cannot provide links or document locations. The system automatically creates clickable links below your message. Simply tell the user where their document is located using the folder path shown above."
+        system_message = self._build_system_message(document_context)
 
         if history and len(history) > 0:
             # Build conversation context

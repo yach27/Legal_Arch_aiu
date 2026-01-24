@@ -1,4 +1,5 @@
 import { FC, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 interface CalendarProps {
@@ -63,19 +64,33 @@ const Calendar: FC<CalendarProps> = ({ isOpen, onClose }) => {
         );
     };
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl p-6 w-96 max-w-full mx-4 ml-64" style={{ marginLeft: '16rem' }}>
+    const modalContent = (
+        <div
+            className="fixed inset-0 flex items-center justify-center z-[9999] bg-black/30 backdrop-blur-sm"
+            style={{ margin: 0, padding: 0 }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <div
+                className="rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.25) 100%)',
+                    backdropFilter: 'blur(40px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                    border: '1px solid rgba(255, 255, 255, 0.4)',
+                    boxShadow: '0 10px 40px 0 rgba(100, 116, 139, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.3)'
+                }}
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-gray-800">
+                <div className="flex items-center justify-between mb-4 border-b border-white/30 pb-3">
+                    <h2 className="text-xl font-semibold text-white/90">
                         {monthNames[currentMonth]} {currentYear}
                     </h2>
                     <button
                         onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        className="text-white/70 hover:text-white/90 hover:bg-white/20 p-1 rounded-lg transition-all text-xl"
                     >
-                        <X size={20} />
+                        ✕
                     </button>
                 </div>
 
@@ -83,27 +98,27 @@ const Calendar: FC<CalendarProps> = ({ isOpen, onClose }) => {
                 <div className="flex items-center justify-between mb-4">
                     <button
                         onClick={() => navigateMonth('prev')}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-2 rounded-full transition-all hover:bg-white/20"
                     >
-                        <ChevronLeft size={20} className="text-gray-600" />
+                        <ChevronLeft size={20} className="text-white/80" />
                     </button>
-                    
-                    <div className="text-lg font-medium text-gray-700">
+
+                    <div className="text-lg font-medium text-white/90">
                         {monthNames[currentMonth]} {currentYear}
                     </div>
-                    
+
                     <button
                         onClick={() => navigateMonth('next')}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-2 rounded-full transition-all hover:bg-white/20"
                     >
-                        <ChevronRight size={20} className="text-gray-600" />
+                        <ChevronRight size={20} className="text-white/80" />
                     </button>
                 </div>
 
                 {/* Days of week header */}
                 <div className="grid grid-cols-7 mb-2">
                     {dayNames.map((day) => (
-                        <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+                        <div key={day} className="text-center text-sm font-medium text-white/75 py-2">
                             {day}
                         </div>
                     ))}
@@ -117,10 +132,10 @@ const Calendar: FC<CalendarProps> = ({ isOpen, onClose }) => {
                                 <button
                                     className={`
                                         w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
-                                        transition-colors hover:bg-blue-100
-                                        ${isToday(day) 
-                                            ? 'bg-blue-500 text-white hover:bg-blue-600' 
-                                            : 'text-gray-700 hover:text-blue-600'
+                                        transition-all
+                                        ${isToday(day)
+                                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg'
+                                            : 'text-white/85 hover:bg-white/20 hover:text-white/95'
                                         }
                                     `}
                                 >
@@ -132,19 +147,22 @@ const Calendar: FC<CalendarProps> = ({ isOpen, onClose }) => {
                 </div>
 
                 {/* Today's date highlight */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                    <div className="text-center text-sm text-gray-600">
-                        Today: {today.toLocaleDateString('en-US', { 
-                            weekday: 'long', 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
+                <div className="mt-4 pt-4 border-t border-white/30">
+                    <div className="text-center text-sm text-white/85 font-medium">
+                        Today: {today.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
                         })}
                     </div>
                 </div>
             </div>
         </div>
     );
+
+    // Render modal using portal to bypass parent overflow constraints
+    return createPortal(modalContent, document.body);
 };
 
 export default Calendar;

@@ -10,6 +10,9 @@ use App\Models\Folder;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use App\Exports\ReportExport;
+use App\Exports\ActivityLogExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
 {
@@ -18,21 +21,12 @@ class ReportController extends Controller
      */
     public function index(Request $request)
     {
-        $period = $request->get('period', 'month');
-        $folderFilter = $request->get('folder', 'all'); // Changed from category to folder
+        $folderFilter = $request->get('folder', 'all');
 
-        // Calculate date ranges based on period
+        // Calculate date ranges
         $now = Carbon::now();
-        $startOfWeek = $now->copy()->startOfWeek();
+        $last7Days = $now->copy()->subDays(7);
         $startOfMonth = $now->copy()->startOfMonth();
-        $startOfYear = $now->copy()->startOfYear();
-
-        // Determine the date range based on selected period
-        $startDate = match($period) {
-            'week' => $startOfWeek,
-            'year' => $startOfYear,
-            default => $startOfMonth,
-        };
 
         // Base query for documents
         $baseQuery = Document::where('status', 'active');
@@ -45,98 +39,62 @@ class ReportController extends Controller
         // Get total documents count (with folder filter applied)
         $totalDocuments = (clone $baseQuery)->count();
 
-        // Get documents this period (with folder filter applied)
-        $documentsThisPeriod = (clone $baseQuery)
-            ->where('created_at', '>=', $startDate)
-            ->count();
-
         // Get documents this month
         $documentsThisMonth = (clone $baseQuery)
             ->where('created_at', '>=', $startOfMonth)
             ->count();
 
-        // Get documents this week
+        // Get documents in last 7 days
         $documentsThisWeek = (clone $baseQuery)
-            ->where('created_at', '>=', $startOfWeek)
+            ->where('created_at', '>=', $last7Days)
             ->count();
 
-        // Get active users (users who have uploaded documents or have activity)
-        $activeUsers = User::whereHas('activityLogs', function ($query) use ($startOfMonth) {
-            $query->where('activity_time', '>=', $startOfMonth);
+        // Get active users (users who have activity in the last 30 days)
+        $last30Days = $now->copy()->subDays(30);
+        $activeUsers = User::whereHas('activityLogs', function ($query) use ($last30Days) {
+            $query->where('activity_time', '>=', $last30Days);
         })->count();
 
         // Calculate storage used (sum of file sizes)
         $storageUsed = $this->formatBytes(
-            (clone $baseQuery)->sum(DB::raw('LENGTH(file_path)')) * 1024 // Approximate calculation
+            (clone $baseQuery)->sum(DB::raw('LENGTH(file_path)')) * 1024
         );
 
-        // Calculate average processing time (placeholder - can be enhanced with actual processing time tracking)
-        $avgProcessingTime = "2.3s"; // You can add actual tracking later
+        // Calculate average processing time (placeholder)
+        $avgProcessingTime = "2.3s";
 
-        // Get documents by folder (all folders, not filtered)
-        $documentsByFolder = Folder::all()
-        ->map(function ($folder) use ($totalDocuments, $startDate, $period) {
-            // Count documents in this folder
+        // Get documents by folder with pagination
+        $perPage = $request->get('per_page', 5);
+        $allFoldersData = Folder::all()
+        ->map(function ($folder) use ($totalDocuments) {
             $count = Document::where('status', 'active')
                 ->where('folder_id', $folder->folder_id)
                 ->count();
 
             $percentage = $totalDocuments > 0 ? ($count / $totalDocuments) * 100 : 0;
 
-            // Calculate trend (comparing this month vs last month)
-            $thisMonthCount = Document::where('status', 'active')
-                ->where('folder_id', $folder->folder_id)
-                ->where('created_at', '>=', Carbon::now()->startOfMonth())
-                ->count();
-
-            $lastMonthCount = Document::where('status', 'active')
-                ->where('folder_id', $folder->folder_id)
-                ->whereBetween('created_at', [
-                    Carbon::now()->subMonth()->startOfMonth(),
-                    Carbon::now()->subMonth()->endOfMonth()
-                ])
-                ->count();
-
-            $trend = $lastMonthCount > 0
-                ? round((($thisMonthCount - $lastMonthCount) / $lastMonthCount) * 100)
-                : 0;
-            $trendSign = $trend >= 0 ? '+' : '';
-
             return [
-                'category' => $folder->folder_name, // Keep 'category' key for frontend compatibility
+                'category' => $folder->folder_name,
                 'count' => $count,
-                'percentage' => round($percentage, 1),
-                'trend' => $trendSign . $trend . '%'
+                'percentage' => round($percentage, 1)
             ];
         })
         ->sortByDesc('count')
-        ->values()
-        ->take(5);
+        ->values();
 
-        // Get recent activity from activity logs
-        $recentActivity = ActivityLog::with(['document', 'user'])
-            ->orderBy('activity_time', 'desc')
-            ->limit(10)
-            ->get()
-            ->map(function ($log) {
-                $activityTime = Carbon::parse($log->activity_time);
+        // Manual pagination
+        $page = $request->get('page', 1);
+        $total = $allFoldersData->count();
+        $documentsByFolder = $allFoldersData->forPage($page, $perPage)->values()->toArray();
 
-                // For login/logout activities, show empty string (no document)
-                if (in_array($log->activity_type, ['login', 'logout'])) {
-                    $documentTitle = '';
-                } else {
-                    $documentTitle = $log->document ? $log->document->title : 'Unknown Document';
-                }
-
-                return [
-                    'action' => $this->formatActivityType($log->activity_type),
-                    'document' => $documentTitle,
-                    'user' => $log->user
-                        ? $log->user->firstname . ' ' . $log->user->lastname
-                        : 'Unknown User',
-                    'time' => $activityTime->diffForHumans()
-                ];
-            });
+        $pagination = [
+            'current_page' => (int)$page,
+            'per_page' => (int)$perPage,
+            'total' => $total,
+            'last_page' => (int)ceil($total / $perPage),
+            'from' => (($page - 1) * $perPage) + 1,
+            'to' => min($page * $perPage, $total),
+        ];
 
         return Inertia::render('Admin/Reports/index', [
             'stats' => [
@@ -148,7 +106,7 @@ class ReportController extends Controller
                 'avgProcessingTime' => $avgProcessingTime,
             ],
             'documentsByCategory' => $documentsByFolder,
-            'recentActivity' => $recentActivity,
+            'pagination' => $pagination,
         ]);
     }
 
@@ -187,25 +145,24 @@ class ReportController extends Controller
     }
 
     /**
-     * Export report as PDF
+     * Export report as PDF (excludes activity logs)
      */
     public function exportPDF(Request $request)
     {
         $reportType = $request->input('reportType', 'general');
         $title = $reportType === 'usage' ? 'Document Usage Report' : 'General Report';
 
-        // Get report data
+        // Get report data (without activity logs)
         $stats = $this->getReportStats();
         $documentsByCategory = $this->getDocumentsByCategory();
-        $recentActivity = $this->getRecentActivity();
 
         // Render using Blade template
         return response()->view('reports.template', [
             'title' => $title,
             'reportType' => $reportType,
             'stats' => $stats,
-            'documentsByCategory' => $documentsByFolder,
-            'recentActivity' => $recentActivity,
+            'documentsByCategory' => $documentsByCategory,
+            'recentActivity' => [], // Empty array - no activity logs in PDF
             'date' => date('F d, Y'),
             'time' => date('h:i A')
         ], 200)
@@ -227,12 +184,13 @@ class ReportController extends Controller
         $documentsByCategory = $this->getDocumentsByCategory();
         $recentActivity = $this->getRecentActivity();
 
-        // Generate CSV content (can be upgraded to Excel using maatwebsite/excel)
-        $csv = $this->generateCSVContent($stats, $documentsByCategory, $recentActivity, $reportType);
+        // Generate Excel file
+        $filename = $reportType . '-report-' . date('Y-m-d') . '.xlsx';
 
-        return response($csv)
-            ->header('Content-Type', 'text/csv')
-            ->header('Content-Disposition', 'attachment; filename="report-' . date('Y-m-d') . '.csv"');
+        return Excel::download(
+            new ReportExport($stats, $documentsByCategory, $recentActivity, $reportType),
+            $filename
+        );
     }
 
     /**
@@ -241,7 +199,7 @@ class ReportController extends Controller
     private function getReportStats()
     {
         $now = Carbon::now();
-        $startOfWeek = $now->copy()->startOfWeek();
+        $last7Days = $now->copy()->subDays(7);
         $startOfMonth = $now->copy()->startOfMonth();
 
         $totalDocuments = Document::where('status', 'active')->count();
@@ -249,7 +207,7 @@ class ReportController extends Controller
             ->where('created_at', '>=', $startOfMonth)
             ->count();
         $documentsThisWeek = Document::where('status', 'active')
-            ->where('created_at', '>=', $startOfWeek)
+            ->where('created_at', '>=', $last7Days)
             ->count();
 
         // Count users active in last 30 days
@@ -308,21 +266,19 @@ class ReportController extends Controller
     }
 
     /**
-     * Get recent activity
+     * Get recent activity (includes all activities including login/logout)
      */
-    private function getRecentActivity()
+    private function getRecentActivity($limit = 20)
     {
         return ActivityLog::with(['document', 'user'])
             ->orderBy('activity_time', 'desc')
-            ->limit(20)
+            ->limit($limit)
             ->get()
             ->map(function ($log) {
-                // For login/logout activities, show empty string (no document)
-                if (in_array($log->activity_type, ['login', 'logout'])) {
-                    $documentTitle = '';
-                } else {
-                    $documentTitle = $log->document ? $log->document->title : 'Unknown Document';
-                }
+                // For login/logout activities, document is empty
+                $documentTitle = in_array($log->activity_type, ['login', 'logout'])
+                    ? ''
+                    : ($log->document ? $log->document->title : 'Unknown Document');
 
                 return [
                     'action' => $this->formatActivityType($log->activity_type),
@@ -334,36 +290,78 @@ class ReportController extends Controller
     }
 
     /**
-     * Generate CSV content
+     * Export activity logs as Excel (includes all activities including login/logout)
      */
-    private function generateCSVContent($stats, $documentsByCategory, $recentActivity, $reportType)
+    public function exportActivityLogs(Request $request)
     {
-        $title = $reportType === 'compliance' ? 'Compliance Report' : 'General Report';
-        $csv = "{$title}\n";
-        $csv .= "Generated on: " . date('F d, Y') . "\n\n";
+        $date = $request->input('date');
 
-        // Summary stats
-        $csv .= "Summary Statistics\n";
-        $csv .= "Total Documents,{$stats['totalDocuments']}\n";
-        $csv .= "Documents This Month,{$stats['documentsThisMonth']}\n";
-        $csv .= "Documents This Week,{$stats['documentsThisWeek']}\n";
-        $csv .= "Active Users,{$stats['activeUsers']}\n";
-        $csv .= "Growth Rate,{$stats['growthRate']}\n\n";
+        // Get all activity logs including login/logout (no limit)
+        $query = ActivityLog::with(['document', 'user'])
+            ->orderBy('activity_time', 'desc');
 
-        // Documents by category
-        $csv .= "Documents by Category\n";
-        $csv .= "Category,Count,Percentage,Trend\n";
-        foreach ($documentsByCategory as $item) {
-            $csv .= "\"{$item['category']}\",{$item['count']},{$item['percentage']}%,{$item['trend']}\n";
+        if ($date) {
+            $query->whereDate('activity_time', $date);
         }
 
-        // Recent activity
-        $csv .= "\nRecent Activity\n";
-        $csv .= "Action,Document,User,Time\n";
-        foreach ($recentActivity as $activity) {
-            $csv .= "\"{$activity['action']}\",\"{$activity['document']}\",\"{$activity['user']}\",{$activity['time']}\n";
-        }
+        $activityLogs = $query->get()
+            ->map(function ($log) {
+                // For login/logout activities, document is empty
+                $documentTitle = in_array($log->activity_type, ['login', 'logout'])
+                    ? ''
+                    : ($log->document ? $log->document->title : 'Unknown Document');
 
-        return $csv;
+                return [
+                    'activity_type' => $this->formatActivityType($log->activity_type),
+                    'document' => $documentTitle,
+                    'user' => $log->user ? $log->user->firstname . ' ' . $log->user->lastname : 'Unknown User',
+                    'time' => Carbon::parse($log->activity_time)->format('Y-m-d H:i:s'),
+                ];
+            });
+
+        // Generate Excel file
+        $dateSuffix = $date ? '-' . $date : '';
+        $filename = 'activity-logs' . $dateSuffix . '-' . date('Y-m-d') . '.xlsx';
+
+        return Excel::download(
+            new ActivityLogExport($activityLogs),
+            $filename
+        );
     }
+
+    /**
+     * Display the activity logs page
+     */
+    public function activityLogs(Request $request)
+    {
+        // Get all activity logs including login/logout
+        $activities = ActivityLog::with(['document', 'user'])
+            ->orderBy('activity_time', 'desc')
+            ->limit(100) // Get last 100 activities
+            ->get()
+            ->map(function ($log) {
+                $activityTime = Carbon::parse($log->activity_time);
+
+                // For login/logout activities, show empty string (no document)
+                if (in_array($log->activity_type, ['login', 'logout'])) {
+                    $documentTitle = '';
+                } else {
+                    $documentTitle = $log->document ? $log->document->title : 'Unknown Document';
+                }
+
+                return [
+                    'action' => $this->formatActivityType($log->activity_type),
+                    'document' => $documentTitle,
+                    'user' => $log->user
+                        ? $log->user->firstname . ' ' . $log->user->lastname
+                        : 'Unknown User',
+                    'time' => $activityTime->diffForHumans()
+                ];
+            });
+
+        return Inertia::render('Admin/ActivityLogs/index', [
+            'activities' => $activities,
+        ]);
+    }
+
 }

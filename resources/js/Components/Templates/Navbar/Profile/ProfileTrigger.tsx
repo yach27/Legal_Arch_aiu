@@ -23,7 +23,14 @@ const ProfileTrigger: React.FC<ProfileTriggerProps> = ({
 
     return (
         <div
-            className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors duration-200"
+            className="flex items-center cursor-pointer rounded-xl p-2 transition-all duration-200"
+            style={{
+                background: 'rgba(255, 255, 255, 0.4)',
+                backdropFilter: 'blur(15px)',
+                WebkitBackdropFilter: 'blur(15px)',
+                border: '1px solid rgba(255, 255, 255, 0.5)',
+                boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)'
+            }}
             onClick={onClick}
         >
             {/* Profile Icon */}
@@ -31,14 +38,14 @@ const ProfileTrigger: React.FC<ProfileTriggerProps> = ({
                 <img
                     src={profileImageUrl}
                     alt={`${userData.name}'s Profile`}
-                    className="w-9 h-9 rounded-full object-cover border-2 border-gray-200"
+                    className="w-9 h-9 rounded-full object-cover border-2 border-white/50"
                     onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.src = `https://i.pravatar.cc/40?u=${userData.email}`;
                     }}
                 />
             ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 flex items-center justify-center text-white text-sm font-bold border-2 border-gray-200">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 flex items-center justify-center text-white text-sm font-bold border-2 border-white/50">
                     {getInitials()}
                 </div>
             )}

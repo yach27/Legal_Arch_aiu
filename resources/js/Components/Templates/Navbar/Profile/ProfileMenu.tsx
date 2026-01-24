@@ -88,7 +88,14 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
 
     return (
         <div
-            className={`absolute right-0 top-full bg-white rounded-lg shadow-lg w-64 p-2 mt-2 border border-gray-200 z-[10000] ${isLoggingOut ? "pointer-events-none opacity-75" : ""}`}
+            className={`absolute right-0 top-full rounded-xl w-64 p-2 mt-2 z-[10000] ${isLoggingOut ? "pointer-events-none opacity-75" : ""}`}
+            style={{
+                background: 'rgba(255, 255, 255, 0.5)',
+                backdropFilter: 'blur(25px)',
+                WebkitBackdropFilter: 'blur(25px)',
+                border: '1px solid rgba(255, 255, 255, 0.6)',
+                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)'
+            }}
         >
             {/* User Info Header */}
             <UserInfoHeader userData={userData} />
@@ -104,17 +111,8 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
                     />
                 </li>
 
-                {/* Settings */}
-                <li>
-                    <MenuItem
-                        icon={<SettingsIcon />}
-                        label="Settings"
-                        onClick={handleSettings}
-                    />
-                </li>
-
                 {/* Divider */}
-                <li className="border-t border-gray-100 my-2"></li>
+                <li className="border-t border-white/30 my-2"></li>
 
                 {/* Logout */}
                 <li>

@@ -44,11 +44,15 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
     }, []);
 
     return (
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100/50 p-6">
+        <div className="rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 p-6" style={{
+            background: 'linear-gradient(135deg, #228B22 0%, #1a6b1a 100%)'
+        }}>
             <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2 text-gray-700">
-                    <Filter className="w-5 h-5 text-green-600" />
-                    <span className="font-semibold">Filters:</span>
+                <div className="flex items-center gap-2 text-white">
+                    <div className="p-2 bg-white/20 rounded-lg">
+                        <Filter className="w-5 h-5" />
+                    </div>
+                    <span className="font-bold">FILTERS:</span>
                 </div>
 
                 <div className="flex gap-2">
@@ -56,11 +60,15 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                         <button
                             key={period}
                             onClick={() => onPeriodChange(period)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
                                 selectedPeriod === period
-                                    ? 'bg-green-600 text-white shadow-md'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    ? 'text-white shadow-lg'
+                                    : 'bg-white/20 text-white/90 hover:bg-white/30'
                             }`}
+                            style={selectedPeriod === period ? {
+                                background: 'linear-gradient(90deg, #FBEC5D 0%, #f5e042 100%)',
+                                color: '#228B22'
+                            } : {}}
                         >
                             {period.charAt(0).toUpperCase() + period.slice(1)}
                         </button>
@@ -70,12 +78,16 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                 <select
                     value={selectedCategory}
                     onChange={(e) => onCategoryChange(e.target.value)}
-                    className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="px-4 py-2 rounded-xl bg-white/20 text-white text-sm font-medium focus:ring-2 focus:outline-none hover:bg-white/30 transition-all duration-300"
                     disabled={loading}
+                    style={{
+                        background: 'rgba(255, 255, 255, 0.2)',
+                        color: 'white'
+                    }}
                 >
-                    <option value="all">All Folders</option>
+                    <option value="all" style={{ color: '#1f2937', background: 'white' }}>All Folders</option>
                     {folders.map((folder) => (
-                        <option key={folder.folder_id} value={folder.folder_id.toString()}>
+                        <option key={folder.folder_id} value={folder.folder_id.toString()} style={{ color: '#1f2937', background: 'white' }}>
                             {folder.folder_name}
                         </option>
                     ))}

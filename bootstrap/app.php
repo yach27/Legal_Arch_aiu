@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 
+        $middleware->alias([
+            'role' => \App\Http\Middleware\RedirectBasedOnRole::class,
+        ]);
+
         // Only exempt login from CSRF (all other routes are protected)
         $middleware->validateCsrfTokens(except: [
             'api/login',

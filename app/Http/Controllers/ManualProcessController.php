@@ -7,11 +7,18 @@ use Inertia\Inertia;
 use App\Models\Document;
 use App\Models\Folder;
 use App\Models\ActivityLog;
+use App\Services\DocumentStorageService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ManualProcessController extends Controller
 {
+    protected DocumentStorageService $storageService;
+
+    public function __construct(DocumentStorageService $storageService)
+    {
+        $this->storageService = $storageService;
+    }
     public function show(Request $request)
     {
         // Get specific document by ID if provided, or latest uploaded document by the current user
@@ -71,23 +78,51 @@ class ManualProcessController extends Controller
         }
             
         if ($latestDocument) {
+            // Load user relationship
+            $latestDocument->load('user');
+
+            // Construct full name from user (same pattern as AIProcessController)
+            $createdByName = 'Unknown User';
+            if ($latestDocument->user) {
+                $nameParts = array_filter([
+                    $latestDocument->user->firstname,
+                    $latestDocument->user->middle_name,
+                    $latestDocument->user->lastname
+                ]);
+                $createdByName = implode(' ', $nameParts) ?: 'Unknown User';
+            }
+
             $documentData = [
                 'doc_id' => $latestDocument->doc_id,
                 'fileName' => basename($latestDocument->file_path) ?: $latestDocument->title,
                 'title' => $latestDocument->title,
+                'description' => $latestDocument->description,
                 'createdAt' => $latestDocument->created_at->format('Y-m-d'),
-                'createdBy' => $latestDocument->created_by,
+                'createdBy' => $createdByName,
                 'category_id' => $latestDocument->category_id,
                 'folder_id' => $latestDocument->folder_id,
                 'remarks' => $latestDocument->remarks,
+                'physical_location' => $latestDocument->physical_location,
+                'document_ref_id' => $latestDocument->document_ref_id,
             ];
         } else {
+            // Construct current user's full name
+            $currentUserName = 'Current User';
+            if (auth()->check() && auth()->user()) {
+                $nameParts = array_filter([
+                    auth()->user()->firstname,
+                    auth()->user()->middle_name,
+                    auth()->user()->lastname
+                ]);
+                $currentUserName = implode(' ', $nameParts) ?: 'Current User';
+            }
+
             $documentData = [
                 'doc_id' => null,
                 'fileName' => 'No file selected',
                 'title' => 'No file selected',
                 'createdAt' => now()->format('Y-m-d'),
-                'createdBy' => 'Current User',
+                'createdBy' => $currentUserName,
             ];
         }
 
@@ -114,11 +149,22 @@ class ManualProcessController extends Controller
     public function updateDocument(Request $request)
     {
         try {
+            // Log incoming request for debugging
+            \Log::info('ManualProcessController - updateDocument called', [
+                'request_data' => $request->all(),
+                'has_folder_id' => $request->has('folder_id'),
+                'folder_id_value' => $request->folder_id,
+                'folder_id_is_null' => $request->folder_id === null
+            ]);
+
             $request->validate([
                 'doc_id' => 'required|integer|exists:documents,doc_id',
                 'title' => 'required|string|max:255',
                 'folder_id' => 'nullable|exists:folders,folder_id',
+                'description' => 'nullable|string',
                 'remarks' => 'nullable|string|max:1000',
+                'physical_location' => 'nullable|string|max:255',
+                'document_ref_id' => 'required|string|max:255|unique:documents,document_ref_id,' . $request->doc_id . ',doc_id',
             ]);
 
             $document = Document::find($request->doc_id);
@@ -131,40 +177,58 @@ class ManualProcessController extends Controller
             }
 
             $newFilePath = $document->file_path; // Keep original path by default
+            $titleToUse = $request->title ?? $document->title;
+
+            // ALWAYS rename the physical file to match the title
+            // This ensures hash filenames like "hecxRBwvss8C8FiWseray4c6pF5OdrPt3irUBl2Q.pdf" become "Document Title.pdf"
+            if ($titleToUse) {
+                $newFilePath = $this->storageService->renameFileToTitle($document, $titleToUse);
+                $document->file_path = $newFilePath;
+            }
 
             // If a folder is selected, move the file to that folder
-            if ($request->folder_id && $request->folder_id != $document->folder_id) {
+            if ($request->folder_id) {
                 $folder = \App\Models\Folder::find($request->folder_id);
                 if ($folder) {
                     try {
-                        // Get the current file name
-                        $fileName = basename($document->file_path);
+                        // Get the current file name (after rename)
+                        $fileName = basename($newFilePath);
 
-                        // Since documents disk root is D:\legal_office, we need to get relative path
-                        // folder_path is like "d:/legal_office/MOA", we need just "MOA"
-                        $basePath = 'd:/legal_office/';
-                        $newFolderPath = str_replace($basePath, '', $folder->folder_path);
-                        $newFilePath = $newFolderPath . '/' . $fileName;
+                        // Use folder_name directly as the relative path from storage root
+                        $targetFolderPath = $folder->folder_name;
+                        $targetFilePath = $targetFolderPath . '/' . $fileName;
+
+                        \Log::info('Attempting to move file to folder', [
+                            'from' => $newFilePath,
+                            'to' => $targetFilePath,
+                            'folder_name' => $folder->folder_name,
+                            'folder_path' => $folder->folder_path
+                        ]);
+
+                        // Create folder if it doesn't exist
+                        if (!Storage::disk('documents')->exists($targetFolderPath)) {
+                            Storage::disk('documents')->makeDirectory($targetFolderPath);
+                        }
 
                         // Move the file from current location to new folder
-                        if (Storage::disk('documents')->exists($document->file_path)) {
-                            Storage::disk('documents')->move($document->file_path, $newFilePath);
+                        if (Storage::disk('documents')->exists($newFilePath)) {
+                            Storage::disk('documents')->move($newFilePath, $targetFilePath);
+                            $newFilePath = $targetFilePath;
 
                             \Log::info('File moved successfully', [
                                 'from' => $document->file_path,
                                 'to' => $newFilePath,
-                                'folder_name' => $folder->folder_name,
-                                'folder_path' => $folder->folder_path
+                                'folder_name' => $folder->folder_name
                             ]);
+                        } else {
+                            \Log::warning('Source file not found', ['path' => $newFilePath]);
                         }
                     } catch (\Exception $e) {
                         \Log::error('Failed to move file', [
                             'error' => $e->getMessage(),
-                            'from' => $document->file_path,
+                            'from' => $newFilePath,
                             'folder' => $folder->folder_name
                         ]);
-                        // Continue with update even if file move fails
-                        $newFilePath = $document->file_path;
                     }
                 }
             }
@@ -179,18 +243,44 @@ class ManualProcessController extends Controller
                 $newFolder = $request->folder_id ? Folder::find($request->folder_id)?->folder_name : 'None';
                 $changes[] = "Folder changed from '{$oldFolder}' to '{$newFolder}'";
             }
+            if ($document->description !== $request->description) {
+                $changes[] = "Description updated";
+            }
             if ($document->remarks !== $request->remarks) {
                 $changes[] = "Remarks updated";
             }
+            if ($document->physical_location !== $request->physical_location) {
+                $changes[] = "Physical location updated";
+            }
+            if ($document->document_ref_id !== $request->document_ref_id) {
+                $changes[] = "Document ID updated";
+            }
 
             // Update document with new metadata and potentially new file path
-            // Same fields as AI upload: title, folder_id, remarks, file_path, status
-            $document->update([
+            // Same fields as AI upload: title, folder_id, description, remarks, physical_location, file_path, status, document_ref_id
+            $updateData = [
                 'title' => $request->title,
-                'folder_id' => $request->folder_id,
+                'description' => $request->description,
                 'remarks' => $request->remarks,
+                'physical_location' => $request->physical_location,
+                'document_ref_id' => $request->document_ref_id,
                 'file_path' => $newFilePath,
                 'status' => 'active',
+            ];
+
+            // Only update folder_id if it's explicitly provided (not null)
+            if ($request->has('folder_id') && $request->folder_id !== null) {
+                $updateData['folder_id'] = $request->folder_id;
+            }
+
+            $document->update($updateData);
+
+            // Log what was actually saved
+            \Log::info('Document updated successfully', [
+                'doc_id' => $document->doc_id,
+                'final_folder_id' => $document->folder_id,
+                'update_data_keys' => array_keys($updateData),
+                'folder_id_in_update' => $updateData['folder_id'] ?? 'not included'
             ]);
 
             // Log the activity

@@ -1,95 +1,225 @@
 // Dashboard/index.tsx
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
+import { router } from '@inertiajs/react';
 import AdminLayout from "../../../../Layouts/AdminLayout";
 import DashboardHeader from "./components/DashboardHeader";
 import RecentFiles from "./components/RecentFiles";
 import RecentDownloads from "./components/RecentDownloads";
 import DocumentAnalytics from "./components/DocumentAnalytics";
 import MonthlyUploads from "./components/MonthlyUploads";
-import StatsCard from "./components/StatsCard";
+import RecentActivity24h from "./components/RecentActivity24h";
 import FileUploadUI from "../Document/components/FileUpload/FileUploadUI";
 import { usePage } from '@inertiajs/react';
 import { DashboardProps } from './types/dashboard';
+import { FileText, Upload, FolderOpen, Users, Search, MessageSquare, TrendingUp, BarChart3 } from 'lucide-react';
 
 export default function AdminDashboard() {
   const { props } = usePage<DashboardProps>();
-  const stats = props.stats || { totalDocuments: 0 };
+  const stats = props.stats || { totalDocuments: 0, activeUsers: 0, totalUsers: 0 };
   const recentFiles = props.recentFiles || [];
   const recentDownloads = props.recentDownloads || [];
 
   // ✅ Use real-time data from backend
   const monthlyUploads = props.monthlyUploads || [];
   const documentAnalytics = props.documentAnalytics || [];
+  const activities = props.activities || [];
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
+  const handleNavigate = (route: string) => {
+    router.visit(route);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Modern Background Pattern */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `radial-gradient(circle at 25% 25%, #10b981 0%, transparent 50%),
-                           radial-gradient(circle at 75% 75%, #3b82f6 0%, transparent 50%)`
-        }}></div>
-      </div>
-
-      {/* Header Section */}
+    <>
       <DashboardHeader onUploadClick={() => setIsUploadModalOpen(true)} />
-      
-      {/* Main Content */}
+
       <div className="px-6 py-6">
-        {/* Modern Grid Layout */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* Stat Cards - Forest Green & Yellow Design */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Total Documents Card - Forest Green */}
+          <div className="group relative rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden transform hover:-translate-y-1"
+            style={{ background: 'linear-gradient(135deg, #228B22 0%, #1a6b1a 100%)' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+            <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full group-hover:scale-125 transition-transform duration-700"></div>
 
-          {/* Left Column - Stats and Analytics */}
-          <div className="xl:col-span-4">
-            <div className="space-y-6">
-              {/* Total Documents Card */}
-              <StatsCard
-                title="TOTAL DOCUMENTS"
-                value={stats.totalDocuments.toLocaleString()}
-                showExport={true}
-              />
-
-              {/* Document Analytics below */}
-              <DocumentAnalytics categories={documentAnalytics} />
-            </div>
-          </div>
-
-          {/* Right Column - Chart and Recent Activity */}
-          <div className="xl:col-span-8">
-            <div className="space-y-6">
-              {/* Monthly Chart at top */}
-              <MonthlyUploads data={monthlyUploads} />
-
-              {/* Recent Activity below */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100/50 overflow-hidden">
-                  <RecentFiles files={recentFiles} />
+            <div className="relative p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-white/30 to-white/10 backdrop-blur-sm rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                  <FileText className="w-5 h-5 text-white" strokeWidth={2.5} />
                 </div>
-                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100/50 overflow-hidden">
-                  <RecentDownloads downloads={recentDownloads} />
+                <div className="flex flex-col items-end">
+                  <TrendingUp className="w-3.5 h-3.5 text-white/70 opacity-70" />
                 </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[0.65rem] font-bold text-white/90 uppercase tracking-[0.1em] leading-tight"
+                   style={{ letterSpacing: '0.1em' }}>
+                  Total Documents
+                </p>
+                <p className="text-3xl font-black text-white tracking-tight leading-none"
+                   style={{ fontFamily: "'Inter', sans-serif" }}>
+                  {stats.totalDocuments}
+                </p>
               </div>
             </div>
           </div>
 
+          {/* Recent Uploads Card - Yellow */}
+          <div className="group relative rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden transform hover:-translate-y-1"
+            style={{ background: 'linear-gradient(135deg, #FBEC5D 0%, #F4D03F 100%)' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+            <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full group-hover:scale-125 transition-transform duration-700"></div>
+
+            <div className="relative p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-white/30 to-white/10 backdrop-blur-sm rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                  <Upload className="w-5 h-5 text-gray-900" strokeWidth={2.5} />
+                </div>
+                <div className="flex flex-col items-end">
+                  <TrendingUp className="w-3.5 h-3.5 text-gray-700 opacity-50" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[0.65rem] font-bold text-gray-700 uppercase tracking-[0.1em] leading-tight"
+                   style={{ letterSpacing: '0.1em' }}>
+                  Recent Uploads
+                </p>
+                <p className="text-3xl font-black text-gray-900 tracking-tight leading-none"
+                   style={{ fontFamily: "'Inter', sans-serif" }}>
+                  {recentFiles.length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Users Card - Forest Green */}
+          <div className="group relative rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden transform hover:-translate-y-1"
+            style={{ background: 'linear-gradient(135deg, #228B22 0%, #1a6b1a 100%)' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+            <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full group-hover:scale-125 transition-transform duration-700"></div>
+
+            <div className="relative p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-white/30 to-white/10 backdrop-blur-sm rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                  <Users className="w-5 h-5 text-white" strokeWidth={2.5} />
+                </div>
+                <div className="flex flex-col items-end">
+                  <TrendingUp className="w-3.5 h-3.5 text-white/70 opacity-70" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[0.65rem] font-bold text-white/90 uppercase tracking-[0.1em] leading-tight"
+                   style={{ letterSpacing: '0.1em' }}>
+                  Active Users
+                </p>
+                <p className="text-3xl font-black text-white tracking-tight leading-none"
+                   style={{ fontFamily: "'Inter', sans-serif" }}>
+                  {stats.activeUsers}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* All Users Card - Yellow */}
+          <div className="group relative rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden transform hover:-translate-y-1"
+            style={{ background: 'linear-gradient(135deg, #FBEC5D 0%, #F4D03F 100%)' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+            <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full group-hover:scale-125 transition-transform duration-700"></div>
+
+            <div className="relative p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-white/30 to-white/10 backdrop-blur-sm rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                  <Users className="w-5 h-5 text-gray-900" strokeWidth={2.5} />
+                </div>
+                <div className="flex flex-col items-end">
+                  <TrendingUp className="w-3.5 h-3.5 text-gray-700 opacity-50" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[0.65rem] font-bold text-gray-700 uppercase tracking-[0.1em] leading-tight"
+                   style={{ letterSpacing: '0.1em' }}>
+                  All Users
+                </p>
+                <p className="text-3xl font-black text-gray-900 tracking-tight leading-none"
+                   style={{ fontFamily: "'Inter', sans-serif" }}>
+                  {stats.totalUsers}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Downloads Card - Forest Green */}
+          <div className="group relative rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden transform hover:-translate-y-1"
+            style={{ background: 'linear-gradient(135deg, #228B22 0%, #1a6b1a 100%)' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+            <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full group-hover:scale-125 transition-transform duration-700"></div>
+
+            <div className="relative p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-white/30 to-white/10 backdrop-blur-sm rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                  <FolderOpen className="w-5 h-5 text-white" strokeWidth={2.5} />
+                </div>
+                <div className="flex flex-col items-end">
+                  <TrendingUp className="w-3.5 h-3.5 text-white/70 opacity-70" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[0.65rem] font-bold text-white/90 uppercase tracking-[0.1em] leading-tight"
+                   style={{ letterSpacing: '0.1em' }}>
+                  Downloads
+                </p>
+                <p className="text-3xl font-black text-white tracking-tight leading-none"
+                   style={{ fontFamily: "'Inter', sans-serif" }}>
+                  {recentDownloads.length}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Modern Floating Action Button */}
-        <div className="fixed bottom-8 right-8 z-50">
-          <button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+        {/* Modern Grid Layout */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+          {/* Top Row - Monthly Uploads and Analytics Side by Side */}
+          <div className="xl:col-span-8">
+            <MonthlyUploads data={monthlyUploads} />
+          </div>
+
+          <div className="xl:col-span-4">
+            <DocumentAnalytics categories={documentAnalytics} />
+          </div>
+
+          {/* Middle Row - Recent Activity */}
+          <div className="xl:col-span-12">
+            <RecentActivity24h activities={activities} />
+          </div>
+
+          {/* Bottom Row - Files and Downloads */}
+          <div className="xl:col-span-6">
+            <RecentFiles files={recentFiles} />
+          </div>
+
+          <div className="xl:col-span-6">
+            <RecentDownloads downloads={recentDownloads} />
+          </div>
+
         </div>
       </div>
 
       {/* Upload Modal */}
-      {isUploadModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-lg w-full max-w-2xl mx-4 ml-64" style={{ marginLeft: '16rem' }}>
+      {isUploadModalOpen && createPortal(
+        <div
+          className="fixed inset-0 flex items-center justify-center z-[9999] bg-black/30 backdrop-blur-[2px]"
+          style={{ margin: 0, padding: 0 }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4">
             <div className="flex justify-between items-center p-6 border-b">
               <h3 className="text-lg font-semibold">Upload Document</h3>
               <button
@@ -113,9 +243,10 @@ export default function AdminDashboard() {
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 

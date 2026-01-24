@@ -16,8 +16,11 @@ CORS(app)
 # Global variable for embedding model
 embedding_model = None
 
-# Path to your local embedding model (adjusted 
-EMBEDDING_MODEL_PATH = "../storage/app/models/all-MiniLM-L6-v2"       
+# Path to your local embedding model
+# Calculate absolute path relative to this script file to ensure it works anywhere
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # aiservice/embedding_service
+PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR)) # Legal_Arch_aiu
+EMBEDDING_MODEL_PATH = os.path.join(PROJECT_ROOT, "storage", "app", "models", "all-MiniLM-L6-v2")       
           
 def load_embedding_model():
     """Load the sentence transformer embedding model"""

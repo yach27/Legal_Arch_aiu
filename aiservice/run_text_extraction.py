@@ -21,9 +21,12 @@ if __name__ == '__main__':
     # Get the path to the text extraction service file
     text_extraction_path = os.path.join(os.path.dirname(__file__), 'text_extraction', 'text_extraction_service.py')
     
-    # Run the text extraction service
+    # Use aiservice_env_py310 (correct Python version with PaddleOCR)
+    python_310_path = os.path.join(os.path.dirname(__file__), 'aiservice_env_py310', 'Scripts', 'python.exe')
+    
+    # Run the text extraction service with Python 3.10
     try:
-        subprocess.run([sys.executable, text_extraction_path], check=True)
+        subprocess.run([python_310_path, text_extraction_path], check=True)
     except KeyboardInterrupt:
         logger.info("Text Extraction Service stopped by user")
     except Exception as e:

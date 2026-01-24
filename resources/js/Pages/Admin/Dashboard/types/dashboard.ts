@@ -26,10 +26,13 @@ export interface MonthlyData {
 export interface DashboardProps {
   stats: {
     totalDocuments: number;
+    activeUsers: number;
+    totalUsers: number;
   };
   recentFiles: RecentFile[];
   recentDownloads: RecentFile[];
   monthlyUploads: MonthlyData[];
   documentAnalytics: DocumentCategory[];
+  activities?: any[];
   [key: string]: any;
 }

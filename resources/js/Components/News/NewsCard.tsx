@@ -20,11 +20,11 @@ const NewsCard: React.FC<NewsProps> = ({
     quote = "",
 }) => {
     return (
-        <div className="bg-white rounded-2xl shadow-lg border border-green-100 overflow-hidden flex flex-col transition-all duration-300 hover:shadow-2xl hover:scale-[1.02] hover:border-green-300">
+        <div className="bg-white/40 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 overflow-hidden flex flex-col transition-all duration-300 hover:shadow-2xl hover:scale-[1.02] hover:border-green-300/50 hover:bg-white/50">
             <img src={image} alt={title} className="w-full h-52 object-cover" />
             <div className="p-6 flex flex-col justify-between h-full">
                 <div>
-                    <h2 className="text-xl font-bold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent leading-snug">
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-green-700 to-emerald-600 bg-clip-text text-transparent leading-snug">
                         {title}
                     </h2>
                     <p className="text-sm text-gray-500 mt-1">
@@ -48,7 +48,7 @@ const NewsCard: React.FC<NewsProps> = ({
                     )}
 
                     {features.length > 0 && (
-                        <div className="bg-gradient-to-br from-green-50 to-green-100/50 p-4 rounded-lg border border-green-200">
+                        <div className="bg-white/50 backdrop-blur-sm p-4 rounded-2xl border border-green-200/50">
                             <h3 className="font-semibold text-green-700 mb-1 text-sm">
                                 Key Features:
                             </h3>

@@ -11,6 +11,8 @@ use App\Http\Controllers\ManualProcessController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\UserProfileController;
+use App\Http\Controllers\StaffController;
+use App\Http\Controllers\AccountController;
 use Inertia\Inertia;
 use App\Http\Controllers\Controller;
 
@@ -18,12 +20,13 @@ Route::get('/', [HomeController::class, 'index']);
 
 // Login route - return the main page with login modal capability
 Route::get('/login', [HomeController::class, 'index'])->name('login');
+Route::post('/login', [LoginController::class, 'login']); // Handle login submission
 
 Route::get('/ai-processing', [AIProcessController::class, 'show'])->name('ai.processing');
 Route::get('/manualy-processing', [ManualProcessController::class, 'show'])->name('manual.processing');
 
 // Admin Routes (Protected) - Session authentication
-Route::prefix('admin')->middleware('auth')->group(function () {
+Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('admin.dashboard');
     Route::get('/document-stats', [AdminController::class, 'getDocumentStats'])->name('admin.document-stats');
     Route::get('/ai-assistant', [AIAssistantController::class, 'index'])->name('admin.Aiassistant.index');
@@ -32,6 +35,16 @@ Route::prefix('admin')->middleware('auth')->group(function () {
     Route::get('/reports', [ReportController::class, 'index'])->name('admin.reports');
     Route::post('/reports/export-pdf', [ReportController::class, 'exportPDF'])->name('admin.reports.export-pdf');
     Route::post('/reports/export-excel', [ReportController::class, 'exportExcel'])->name('admin.reports.export-excel');
+    Route::post('/reports/export-activity-logs', [ReportController::class, 'exportActivityLogs'])->name('admin.reports.export-activity-logs');
+
+    Route::get('/activity-logs', [ReportController::class, 'activityLogs'])->name('admin.activity-logs');
+
+    // Account Management Routes
+    Route::get('/account', [AccountController::class, 'index'])->name('admin.account');
+    Route::get('/account/users', [AccountController::class, 'getUsers'])->name('admin.account.users');
+    Route::post('/account/users', [AccountController::class, 'store'])->name('admin.account.store');
+    Route::put('/account/users/{user_id}', [AccountController::class, 'update'])->name('admin.account.update');
+    Route::delete('/account/users/{user_id}', [AccountController::class, 'destroy'])->name('admin.account.destroy');
 
     // User Profile Management Routes
     Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
@@ -44,4 +57,37 @@ Route::get('/admin/documents', [DocumentController::class, 'index'])->name('docu
 Route::post('/admin/documents', [DocumentController::class, 'store'])->name('documents.store');
 Route::get('/admin/documents/list', [DocumentController::class, 'getDocuments'])->name('documents.list');
 Route::get('/admin/documents/counts', [DocumentController::class, 'getDocumentCounts'])->name('documents.counts');
+});
+
+// Staff Routes (Protected) - Session authentication
+Route::prefix('staff')->middleware(['auth', 'role:staff'])->group(function () {
+    Route::get('/dashboard', [StaffController::class, 'dashboard'])->name('staff.dashboard');
+
+    Route::get('/ai-assistant', function () {
+        return Inertia::render('Staff/AIAssistant/index');
+    })->name('staff.ai-assistant');
+
+    Route::get('/documents', [StaffController::class, 'documents'])->name('staff.documents');
+    Route::get('/documents/list', [StaffController::class, 'getDocuments'])->name('staff.documents.list');
+    
+    // API Document Routes for Staff
+    Route::get('/api/documents', [DocumentController::class, 'getDocuments'])->name('staff.api.documents.list');
+    Route::get('/api/documents/counts', [DocumentController::class, 'getDocumentCounts'])->name('staff.api.documents.counts');
+    Route::get('/api/documents/{id}', [DocumentController::class, 'show'])->name('staff.api.documents.show');
+    Route::get('/api/documents/{id}/metadata', [DocumentController::class, 'show'])->name('staff.api.documents.metadata');
+    Route::put('/api/documents/{id}/metadata', [DocumentController::class, 'updateMetadata'])->name('staff.api.documents.update.metadata');
+    Route::get('/api/documents/{id}/content', [DocumentController::class, 'getContent'])->name('staff.api.documents.content');
+    Route::get('/api/documents/{id}/download', [DocumentController::class, 'streamContent'])->name('staff.api.documents.download');
+    Route::post('/api/documents/{id}/log-download', [DocumentController::class, 'logDownload'])->name('staff.api.documents.log.download');
+    Route::post('/api/documents', [DocumentController::class, 'store'])->name('staff.api.documents.store');
+    Route::put('/api/documents/{id}', [DocumentController::class, 'update'])->name('staff.api.documents.update');
+    Route::delete('/api/documents/{id}', [DocumentController::class, 'destroy'])->name('staff.api.documents.destroy');
+    Route::put('/api/documents/{id}/archive', [DocumentController::class, 'archive'])->name('staff.api.documents.archive');
+    Route::put('/api/documents/{id}/restore', [DocumentController::class, 'restore'])->name('staff.api.documents.restore');
+    Route::get('/api/documents/folder/{folderId}/count', [DocumentController::class, 'getFolderDocumentCount'])->name('staff.api.documents.folder.count');
+
+    // Notification Routes
+    Route::get('/notifications', [StaffController::class, 'getNotifications'])->name('staff.notifications.list');
+    Route::put('/notifications/{id}/read', [StaffController::class, 'markNotificationRead'])->name('staff.notifications.read');
+    Route::put('/notifications/read-all', [StaffController::class, 'markAllNotificationsRead'])->name('staff.notifications.read-all');
 });

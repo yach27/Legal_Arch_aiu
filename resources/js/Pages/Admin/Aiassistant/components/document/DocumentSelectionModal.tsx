@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, FileText, Search } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { Document } from '../../types';
+import { FolderDocumentGroup } from './FolderDocumentGroup';
 
 interface DocumentSelectionModalProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ export const DocumentSelectionModal: React.FC<DocumentSelectionModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (isOpen && !hasLoadedOnce) {
@@ -43,6 +45,50 @@ export const DocumentSelectionModal: React.FC<DocumentSelectionModalProps> = ({
   const filteredDocuments = documents.filter(doc =>
     doc.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Group documents by folder
+  const groupedDocuments = useMemo(() => {
+    const groups: Record<string, { folderName: string; documents: Document[] }> = {};
+
+    filteredDocuments.forEach(doc => {
+      const folderKey = doc.folder_id ? String(doc.folder_id) : 'uncategorized';
+      const folderName = doc.folder?.folder_name || 'Uncategorized';
+
+      if (!groups[folderKey]) {
+        groups[folderKey] = { folderName, documents: [] };
+      }
+      groups[folderKey].documents.push(doc);
+    });
+
+    // Sort: alphabetically, Uncategorized last
+    return Object.entries(groups).sort(([keyA, a], [keyB, b]) => {
+      if (keyA === 'uncategorized') return 1;
+      if (keyB === 'uncategorized') return -1;
+      return a.folderName.localeCompare(b.folderName);
+    });
+  }, [filteredDocuments]);
+
+  const toggleFolder = (folderKey: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderKey)) {
+        newSet.delete(folderKey);
+      } else {
+        newSet.add(folderKey);
+      }
+      return newSet;
+    });
+  };
+
+  // Expand all folders by default when documents load
+  useEffect(() => {
+    if (documents.length > 0 && expandedFolders.size === 0) {
+      const allFolderKeys = new Set(
+        documents.map(doc => doc.folder_id ? String(doc.folder_id) : 'uncategorized')
+      );
+      setExpandedFolders(allFolderKeys);
+    }
+  }, [documents]);
 
   const toggleDocumentSelection = (document: any) => {
     setSelectedDocuments(prev => {
@@ -123,35 +169,17 @@ export const DocumentSelectionModal: React.FC<DocumentSelectionModalProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredDocuments.map((document) => (
-                <div
-                  key={document.doc_id || document.id}
-                  className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all ${
-                    selectedDocuments.some(doc => (doc.doc_id || doc.id) === (document.doc_id || document.id))
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                  onClick={() => toggleDocumentSelection(document)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedDocuments.some(doc => (doc.doc_id || doc.id) === (document.doc_id || document.id))}
-                    onChange={(e) => {
-                      e.stopPropagation(); // Prevent event bubbling to parent div
-                      toggleDocumentSelection(document);
-                    }}
-                    className="mr-3 h-4 w-4 text-green-600 rounded focus:ring-green-500"
-                  />
-                  <FileText className="w-5 h-5 text-gray-500 mr-3 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium text-gray-900 truncate">
-                      {document.title}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {document.type} • {new Date(document.uploadDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
+              {groupedDocuments.map(([folderKey, { folderName, documents: folderDocs }]) => (
+                <FolderDocumentGroup
+                  key={folderKey}
+                  folderKey={folderKey}
+                  folderName={folderName}
+                  documents={folderDocs}
+                  isExpanded={expandedFolders.has(folderKey)}
+                  selectedDocuments={selectedDocuments}
+                  onToggleFolder={toggleFolder}
+                  onToggleDocument={toggleDocumentSelection}
+                />
               ))}
             </div>
           )}

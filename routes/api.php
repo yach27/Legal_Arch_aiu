@@ -42,20 +42,25 @@ Route::get('/ai/health', function () {
 // Public AI helper routes (for Flask AI Bridge Service)
 Route::get('/ai/categories/public', [DocumentController::class, 'getAICategories']);
 Route::get('/ai/folders/public', [DocumentController::class, 'getAIFolders']);
+Route::get('/document-embeddings/all', [DocumentController::class, 'getAllEmbeddings']); // Public endpoint for semantic search
+
+// Public scanner upload endpoint (for local scanner service)
+Route::post('/scanner/upload', [DocumentController::class, 'scannerUpload']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
-    // Folder routes
-    Route::apiResource('folders', FolderController::class);
+    // Folder routes - specific routes BEFORE apiResource
     Route::get('folders/search/{term}', [FolderController::class, 'search']);
     Route::get('folders/recent/{limit?}', [FolderController::class, 'recent']);
     Route::get('folders/tree', [FolderController::class, 'tree']);
-    
+    Route::get('folders/{parentId}/subfolders', [FolderController::class, 'getSubfolders']);
+    Route::apiResource('folders', FolderController::class);
+
     // Upload and category routes
     Route::post('/upload', [DocumentController::class, 'store']);
     Route::get('/categories', [CategoryController::class, 'index']);
-    
-    // Document routes
+
+    // Document routes - IMPORTANT: Specific routes MUST come before wildcard {id} routes
     Route::get('/documents', [DocumentController::class, 'getDocuments']);
     Route::get('/documents/counts', [DocumentController::class, 'getDocumentCounts']);
     Route::get('/counts', [DocumentController::class, 'getDocumentCounts']); // Alias for frontend compatibility
@@ -63,34 +68,44 @@ Route::middleware('auth:sanctum')->group(function () {
     // Optimized folder document count routes
     Route::post('/documents/folders/bulk-counts', [DocumentController::class, 'getBulkFolderCounts']);
     Route::get('/documents/folder/{folderId}/count', [DocumentController::class, 'getFolderDocumentCount']);
+
+    // Bulk document operations
+    Route::post('/documents/bulk-archive', [DocumentController::class, 'bulkArchive']);
+    Route::post('/documents/bulk-restore', [DocumentController::class, 'bulkRestore']);
+    Route::post('/documents/bulk-delete', [DocumentController::class, 'bulkDelete']);
+
     // Manual Processing routes
     Route::get('/manual-process/folders', [ManualProcessController::class, 'getFolders']);
     Route::post('/manual-process/update', [ManualProcessController::class, 'updateDocument']);
-    
-    // Document routes for Flask AI Bridge integration
-    Route::get('/documents/{id}', [DocumentController::class, 'show']); // Get single document
+
+    // Document routes with {id} parameter - MUST come after all specific document routes
     Route::get('/documents/{id}/content', [DocumentController::class, 'getContent']); // Get document content for viewing
+    Route::get('/documents/{id}/text', [DocumentController::class, 'getDocumentText']); // Get document text for AI processing
+    Route::put('/documents/{id}/metadata', [DocumentController::class, 'updateMetadata']); // Update document metadata (AI)
+    Route::post('/documents/{id}/log-download', [DocumentController::class, 'logDownload']); // Log download activity
+    Route::put('/documents/{id}/archive', [DocumentController::class, 'archive']); // Archive document
+    Route::put('/documents/{id}/restore', [DocumentController::class, 'restore']); // Restore archived document
+    Route::delete('/documents/{id}', [DocumentController::class, 'destroy']); // Delete document
+    Route::get('/documents/{id}', [DocumentController::class, 'show']); // Get single document - MUST be last
+
     Route::get('/doc/{id}/view', [DocumentController::class, 'getContent']); // Alternative endpoint to avoid ad blockers
     Route::post('/files/stream/{id}', [DocumentController::class, 'streamContent']); // Stream content as base64 to bypass ad blockers
-    Route::post('/documents/{id}/log-download', [DocumentController::class, 'logDownload']); // Log download activity
-    Route::put('/documents/{id}/status', [DocumentController::class, 'updateStatus']); // Update document status
-    Route::put('/documents/{id}/update-metadata', [DocumentController::class, 'updateMetadata']); // Update document metadata (AI)
-    
+
     // Document embedding routes
     Route::post('/document-embeddings/store', [DocumentController::class, 'storeEmbeddings']); // Store embeddings
     Route::get('/document-embeddings/{docId}', [DocumentController::class, 'getEmbeddings']); // Get embeddings
-    
+
     // AI Processing helper routes - get categories and folders for AI suggestions
     Route::get('/ai/categories', [DocumentController::class, 'getAICategories']); // Get categories for AI
     Route::get('/ai/folders', [DocumentController::class, 'getAIFolders']); // Get folders for AI
-    
+
     // AI Processing route (legacy)
     Route::post('/documents/process-ai', [AIProcessController::class, 'processWithAI']); // Process document with AI
-    
+
     // Keep legacy routes for backward compatibility
     Route::post('/documents/save', [ManualProcessController::class, 'saveDocument']); // Manual document save
     Route::post('/documents/update', [ManualProcessController::class, 'updateDocument']); // Update uploaded document
-    
+
     // Auth routes
     Route::post('/logout', [LogoutController::class, 'logout']);
     Route::get('/user', function (Request $request) {
@@ -106,5 +121,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/conversations', [AIAssistantController::class, 'getConversations']);
         Route::get('/chat-history/{sessionId}', [AIAssistantController::class, 'getChatHistory']);
         Route::delete('/conversations/{conversationId}', [AIAssistantController::class, 'deleteConversation']);
+        Route::post('/conversations/{conversationId}/star', [AIAssistantController::class, 'starConversation']);
+        Route::post('/conversations/{conversationId}/unstar', [AIAssistantController::class, 'unstarConversation']);
     });
 });

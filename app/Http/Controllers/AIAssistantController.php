@@ -11,20 +11,21 @@ use App\Models\AIConversation;
 use App\Models\AIHistory;
 use App\Models\Document;
 use App\Models\DocumentEmbedding;
+use App\Services\GroqService;
 
 class AIAssistantController extends Controller
 {
     private $aiServiceUrl;
+    private $aiBridgeUrl;
     private $aiServiceType;
-    private $groqApiKey;
-    private $groqModel;
+    private GroqService $groqService;
 
-    public function __construct()
+    public function __construct(GroqService $groqService)
     {
         $this->aiServiceUrl = env('AI_SERVICE_URL', 'http://localhost:5000');
+        $this->aiBridgeUrl = env('AI_BRIDGE_URL', 'http://localhost:5003');
         $this->aiServiceType = env('AI_SERVICE_TYPE', 'local');
-        $this->groqApiKey = env('GROQ_API_KEY');
-        $this->groqModel = env('GROQ_MODEL', 'llama-3.3-70b-versatile');
+        $this->groqService = $groqService;
     }
 
     public function sendMessage(Request $request)
@@ -93,17 +94,26 @@ class AIAssistantController extends Controller
                 }
             }
 
-            // Check if user is asking about document location/search
+            // Check if user is asking about document location/search or specific content
             $searchResults = $this->searchDocumentsByQuery($request->message, $userId);
 
+            // Perform metadata search (fast SQL search on title/description)
+            $metadataResults = $this->searchDocumentsMetadata($request->message, $userId);
+
+            // Perform semantic search if query contains names or specific search terms
+            $semanticResults = $this->performSemanticSearch($request->message, $userId);
+
             // Retrieve document context if document IDs are provided
+            // Use higher limits for Groq API
             $documentContext = '';
+            $useGroqLimits = $this->aiServiceType === 'groq';
             if ($request->document_ids && count($request->document_ids) > 0) {
-                $documentContext = $this->retrieveDocumentContext($request->document_ids, $userId);
+                $documentContext = $this->retrieveDocumentContext($request->document_ids, $userId, $useGroqLimits);
 
                 Log::info('Document context retrieved', [
                     'document_count' => count($request->document_ids),
-                    'context_length' => strlen($documentContext)
+                    'context_length' => strlen($documentContext),
+                    'using_groq_limits' => $useGroqLimits
                 ]);
             }
 
@@ -115,14 +125,54 @@ class AIAssistantController extends Controller
                 ]);
             }
 
-            // Generate AI response based on service type
-            if ($this->aiServiceType === 'groq') {
-                Log::info('Using Groq API for chat...');
-                $aiResponse = $this->callGroqAPI($request->message, $conversationId, $documentContext);
-            } else {
-                // Use local AI service
-                Log::info('Using local AI service...');
-                $aiResponse = $this->callLocalAIService($request->message, $conversationId, $documentContext);
+            // Add metadata search results to document context if found
+            if (!empty($metadataResults)) {
+                $documentContext .= "\n\n" . $metadataResults['context'];
+                Log::info('Metadata search results added to context', [
+                    'documents_found' => $metadataResults['count']
+                ]);
+            }
+
+            // Add semantic search results to document context if found
+            if (!empty($semanticResults) && !empty($semanticResults['results'])) {
+                $documentContext .= "\n\n" . $semanticResults['context'];
+                Log::info('Semantic search results added to context', [
+                    'chunks_found' => count($semanticResults['results'])
+                ]);
+            }
+
+            // Generate AI response with automatic fallback
+            // Try Groq first if configured, fall back to local if it fails
+            $aiResponse = null;
+            $primaryService = $this->aiServiceType;
+
+            try {
+                if ($primaryService === 'groq') {
+                    Log::info('Attempting Groq API for chat...');
+                    $aiResponse = $this->callGroqAPI($request->message, $conversationId, $documentContext);
+                } else {
+                    Log::info('Attempting local AI service...');
+                    $aiResponse = $this->callLocalAIService($request->message, $conversationId, $documentContext);
+                }
+            } catch (\Exception $e) {
+                Log::warning("Primary AI service ({$primaryService}) failed: " . $e->getMessage());
+
+                // Automatic fallback to alternative service
+                try {
+                    if ($primaryService === 'groq') {
+                        Log::info('Groq failed, falling back to local AI service...');
+                        $aiResponse = $this->callLocalAIService($request->message, $conversationId, $documentContext);
+                    } else {
+                        Log::info('Local AI failed, falling back to Groq API...');
+                        $aiResponse = $this->callGroqAPI($request->message, $conversationId, $documentContext);
+                    }
+                } catch (\Exception $fallbackError) {
+                    Log::error('Both AI services failed', [
+                        'primary_error' => $e->getMessage(),
+                        'fallback_error' => $fallbackError->getMessage()
+                    ]);
+                    throw new \Exception('All AI services are currently unavailable. Please ensure either the local AI server is running or you have internet connection for Groq API.');
+                }
             }
 
             Log::info('AI response generated successfully', [
@@ -147,6 +197,25 @@ class AIAssistantController extends Controller
             } elseif (!empty($searchResults) && !empty($searchResults['documents'])) {
                 // Add search results as document references
                 $documentReferences = $searchResults['documents'];
+            } elseif (!empty($metadataResults) && !empty($metadataResults['documents'])) {
+                // Add metadata search results as document references
+                $documentReferences = $metadataResults['documents'];
+            } elseif (!empty($semanticResults) && !empty($semanticResults['documents'])) {
+                // Add semantic search results as document references
+                foreach ($semanticResults['documents'] as $semanticDoc) {
+                    $doc = Document::with('folder:folder_id,folder_name')
+                        ->find($semanticDoc['doc_id']);
+
+                    if ($doc) {
+                        $documentReferences[] = [
+                            'doc_id' => $doc->doc_id,
+                            'title' => $doc->title,
+                            'folder_id' => $doc->folder_id,
+                            'folder_name' => $doc->folder ? $doc->folder->folder_name : null,
+                            'matches' => $semanticDoc['matches'] ?? 1
+                        ];
+                    }
+                }
             }
 
             // Save chat history to database
@@ -277,7 +346,7 @@ class AIAssistantController extends Controller
                     'lastMessage' => $lastMessage,
                     'created_at' => $conv->started_at,
                     'updated_at' => $conv->started_at,
-                    'starred' => false,
+                    'starred' => (bool)$conv->starred,
                 ];
             });
 
@@ -360,10 +429,55 @@ class AIAssistantController extends Controller
         }
     }
 
+    public function starConversation($conversationId)
+    {
+        try {
+            $conversation = AIConversation::where('conversation_id', $conversationId)
+                ->where('user_id', Auth::id())
+                ->firstOrFail();
+
+            $conversation->starred = true;
+            $conversation->save();
+
+            return response()->json(['message' => 'Conversation starred']);
+        } catch (\Exception $e) {
+            Log::error('Star conversation failed', [
+                'conversation_id' => $conversationId,
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => 'Failed to star conversation'], 500);
+        }
+    }
+
+    public function unstarConversation($conversationId)
+    {
+        try {
+            $conversation = AIConversation::where('conversation_id', $conversationId)
+                ->where('user_id', Auth::id())
+                ->firstOrFail();
+
+            $conversation->starred = false;
+            $conversation->save();
+
+            return response()->json(['message' => 'Conversation unstarred']);
+        } catch (\Exception $e) {
+            Log::error('Unstar conversation failed', [
+                'conversation_id' => $conversationId,
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => 'Failed to unstar conversation'], 500);
+        }
+    }
+
     /**
      * Retrieve document context from embeddings for the given document IDs
      */
-    private function retrieveDocumentContext(array $documentIds, int $userId): string
+    /**
+     * Retrieve document context from embeddings for the given document IDs
+     */
+    private function retrieveDocumentContext(array $documentIds, int $userId, bool $useGroqLimits = false): string
     {
         try {
             // Allow all users to access all active documents
@@ -381,6 +495,7 @@ class AIAssistantController extends Controller
             }
 
             // Get document embeddings/chunks for accessible documents
+            // We fetch ALL chunks first, then select them in a round-robin fashion
             $embeddings = DocumentEmbedding::whereIn('doc_id', $accessibleDocuments)
                 ->with('document:doc_id,title')
                 ->orderBy('doc_id')
@@ -389,53 +504,72 @@ class AIAssistantController extends Controller
 
             if ($embeddings->isEmpty()) {
                 Log::warning('No embeddings found for documents', [
-                    'document_ids' => $ownedDocuments
+                    'document_ids' => $accessibleDocuments
                 ]);
                 return '';
+            }
+
+            // Group embeddings by document ID
+            $groupedEmbeddings = $embeddings->groupBy('doc_id');
+            $docIds = $groupedEmbeddings->keys()->toArray();
+            
+            // Round Robin Selection
+            // Create a flat list interleaving chunks: DocA-1, DocB-1, DocA-2, DocB-2...
+            $interleavedEmbeddings = [];
+            $maxChunksPerDoc = $embeddings->count(); // Upper bound
+            
+            for ($i = 0; $i < $maxChunksPerDoc; $i++) {
+                $addedAny = false;
+                foreach ($docIds as $docId) {
+                    if (isset($groupedEmbeddings[$docId][$i])) {
+                        $interleavedEmbeddings[] = $groupedEmbeddings[$docId][$i];
+                        $addedAny = true;
+                    }
+                }
+                if (!$addedAny) break;
             }
 
             // Build document context
             $context = "The user has attached documents to this conversation. Below is the extracted content from their attached documents that you should use to answer their questions:\n\n";
 
-            $currentDocId = null;
             $chunkCount = 0;
-            $maxChunks = 3; // Reduced to 3 chunks for faster processing
-            $maxContextLength = 2000; // Maximum 2000 characters for context
 
-            foreach ($embeddings as $embedding) {
+            // Use higher limits for Groq (supports 128K context), lower for local
+            // INCREASED LIMITS: Local 3 -> 15 chunks, 2000 -> 6000 chars to support comparison
+            $maxChunks = $useGroqLimits ? 40 : 15;
+            $maxContextLength = $useGroqLimits ? 32000 : 6000;
+            
+            // Variable to track which documents we've already added a header for in the current block
+            // Since we're interleaving, we might switch back and forth.
+            // A better approach for the LLM is to group by document in the FINAL output, 
+            // OR strictly label each chunk. 
+            // Labeling each chunk is safer for "Compare these" queries so the LLM knows which doc is which.
+            
+            foreach ($interleavedEmbeddings as $embedding) {
                 if ($chunkCount >= $maxChunks) {
                     break;
                 }
 
+                $docTitle = $embedding->document->title ?? 'Document ' . $embedding->doc_id;
+                
+                // Content with clear attribution
+                $chunkContent = "--- Excerpt from Document: \"{$docTitle}\" ---\n{$embedding->chunk_text}\n";
+
                 // Check if adding this chunk would exceed our length limit
-                $potentialAddition = $embedding->chunk_text . "\n\n";
-                if (strlen($context . $potentialAddition) > $maxContextLength) {
+                if (strlen($context . $chunkContent) > $maxContextLength) {
                     break;
                 }
 
-                // Add document header when switching to a new document
-                if ($currentDocId !== $embedding->doc_id) {
-                    $currentDocId = $embedding->doc_id;
-                    $docTitle = $embedding->document->title ?? 'Document ' . $embedding->doc_id;
-                    $context .= "\n--- Document: {$docTitle} ---\n";
-                }
-
-                // Add chunk text (truncate if still too long)
-                $chunkText = $embedding->chunk_text;
-                if (strlen($chunkText) > 600) {
-                    $chunkText = substr($chunkText, 0, 600) . "... [content continues]";
-                }
-
-                $context .= $chunkText . "\n\n";
+                $context .= $chunkContent . "\n";
                 $chunkCount++;
             }
 
             $context .= "\n--- End of Attached Document Content ---\n\n";
-            $context .= "IMPORTANT: The content above is from the user's attached documents. When the user refers to 'this document', 'the attached file', or asks you to summarize/analyze documents, they are referring to the content provided above. You have access to this document content and should answer based on it. Do NOT say you cannot see attachments or that you need the user to copy/paste content - you already have the document content above.";
+            $context .= "IMPORTANT: The content above is from the user's attached documents. When the user compares documents, refers to 'this document', 'the attached file', or asks you to summarize/analyze documents, they are referring to the content provided above. You have access to this document content and should answer based on it.";
 
-            Log::info('Document context built', [
+            Log::info('Document context built (Round Robin)', [
                 'total_chunks' => $chunkCount,
-                'documents_included' => array_unique($embeddings->pluck('doc_id')->toArray()),
+                'documents_count' => count($docIds),
                 'context_length' => strlen($context)
             ]);
 
@@ -608,12 +742,12 @@ class AIAssistantController extends Controller
     private function callGroqAPI(string $message, $conversationId, string $documentContext = ''): string
     {
         try {
-            if (!$this->groqApiKey) {
+            if (!$this->groqService->isConfigured()) {
                 throw new \Exception('Groq API key is not configured. Please set GROQ_API_KEY in .env file.');
             }
 
             // Get conversation history for context
-            $conversationMessages = [];
+            $conversationHistory = [];
             if ($conversationId && is_numeric($conversationId)) {
                 $history = AIHistory::where('conversation_id', $conversationId)
                     ->where('user_id', Auth::id())
@@ -623,75 +757,41 @@ class AIAssistantController extends Controller
                     ->reverse();
 
                 foreach ($history as $item) {
-                    $conversationMessages[] = ['role' => 'user', 'content' => $item->question];
-                    $conversationMessages[] = ['role' => 'assistant', 'content' => $item->answer];
+                    $conversationHistory[] = ['role' => 'user', 'content' => $item->question];
+                    $conversationHistory[] = ['role' => 'assistant', 'content' => $item->answer];
                 }
             }
 
-            // Build messages array for Groq API
-            $messages = [
-                [
-                    'role' => 'system',
-                    'content' => 'You are a helpful AI assistant for a legal document management system. You provide clear, accurate, and professional responses. When document context is provided, you analyze and reference it in your responses.'
-                ]
-            ];
+            // Build system prompt
+            $systemPrompt = $this->groqService->buildDocumentSystemPrompt($documentContext);
 
-            // Add conversation history
-            $messages = array_merge($messages, $conversationMessages);
-
-            // Add document context if available
+            // Add document context to message if available
             $userMessage = $message;
             if (!empty($documentContext)) {
                 $userMessage = $documentContext . "\n\nUser Question: " . $message;
             }
 
-            // Add current user message
-            $messages[] = [
-                'role' => 'user',
-                'content' => $userMessage
-            ];
-
             Log::info('Groq API request', [
-                'model' => $this->groqModel,
-                'message_count' => count($messages),
+                'model' => $this->groqService->getModel(),
+                'history_messages' => count($conversationHistory),
                 'has_document_context' => !empty($documentContext)
             ]);
 
-            // Call Groq API
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->groqApiKey,
-                'Content-Type' => 'application/json',
-            ])
-            ->timeout(60)
-            ->post('https://api.groq.com/openai/v1/chat/completions', [
-                'model' => $this->groqModel,
-                'messages' => $messages,
-                'temperature' => 0.7,
-                'max_tokens' => 2000,
-                'top_p' => 0.9,
-            ]);
-
-            if (!$response->successful()) {
-                $errorBody = $response->json();
-                Log::error('Groq API error', [
-                    'status' => $response->status(),
-                    'error' => $errorBody
-                ]);
-                throw new \Exception('Groq API error: ' . ($errorBody['error']['message'] ?? 'Unknown error'));
-            }
-
-            $data = $response->json();
-
-            if (!isset($data['choices'][0]['message']['content'])) {
-                throw new \Exception('Invalid response format from Groq API');
-            }
-
-            $aiResponse = $data['choices'][0]['message']['content'];
+            // Call Groq service with chat history
+            $aiResponse = $this->groqService->chatWithHistory(
+                $userMessage,
+                $conversationHistory,
+                $systemPrompt,
+                [
+                    'temperature' => 0.7,
+                    'max_tokens' => 2000,
+                    'timeout' => 60
+                ]
+            );
 
             Log::info('Groq API response received', [
                 'response_length' => strlen($aiResponse),
-                'model' => $data['model'] ?? 'unknown',
-                'usage' => $data['usage'] ?? []
+                'model' => $this->groqService->getModel()
             ]);
 
             return $aiResponse;
@@ -714,7 +814,7 @@ class AIAssistantController extends Controller
             // First, check if AI service is available
             Log::info('Checking local AI service health...');
 
-            $healthResponse = Http::timeout(5)->get("{$this->aiServiceUrl}/health");
+            $healthResponse = Http::timeout(15)->get("{$this->aiServiceUrl}/health");
 
             if (!$healthResponse->successful()) {
                 throw new \Exception('AI service health check failed: ' . $healthResponse->status());
@@ -727,20 +827,18 @@ class AIAssistantController extends Controller
                 throw new \Exception('AI model not loaded in service');
             }
 
-            // Build the complete message with document context
-            $completeMessage = $message;
-            if (!empty($documentContext)) {
-                $completeMessage = $documentContext . "\n\nUser Question: " . $message;
-            }
-
-            // Call Python AI service
-            Log::info('Sending request to local AI service...');
+            // Call Python AI service with document context as separate parameter
+            Log::info('Sending request to local AI service...', [
+                'has_document_context' => !empty($documentContext),
+                'context_length' => strlen($documentContext)
+            ]);
 
             $response = Http::timeout(240)
                 ->retry(2, 1000)
                 ->post("{$this->aiServiceUrl}/chat", [
-                    'message' => $completeMessage,
+                    'message' => $message,
                     'conversation_id' => $conversationId,
+                    'document_context' => $documentContext,
                 ]);
 
             Log::info('Local AI service response received', [
@@ -781,5 +879,336 @@ class AIAssistantController extends Controller
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Perform semantic search across document content using AI embeddings
+     */
+    private function performSemanticSearch(string $message, int $userId): array
+    {
+        try {
+            if (!$this->shouldTriggerSemanticSearch($message)) {
+                return [];
+            }
+
+            $searchResults = $this->callSemanticSearchService($message, $userId);
+
+            if (empty($searchResults)) {
+                return [];
+            }
+
+            return [
+                'context' => $this->buildSemanticSearchContext($searchResults),
+                'results' => $searchResults,
+                'documents' => $this->extractDocumentMap($searchResults)
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Semantic search failed', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Search documents by metadata (title, description) - Fast SQL search
+     */
+    private function searchDocumentsMetadata(string $message, int $userId): array
+    {
+        try {
+            // Extract potential search terms from the message
+            $words = preg_split('/\s+/', $message);
+            
+            // Filter out common words but keep proper names (capitalized) and meaningful terms
+            $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'can', 'may', 'might', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how'];
+            
+            $searchTerms = array_filter($words, function($word) use ($stopWords) {
+                $wordLower = strtolower($word);
+                // Keep if: length > 2 AND (not a stop word OR starts with capital letter - likely a name)
+                $isProperName = ctype_upper($word[0] ?? '');
+                return strlen($word) > 2 && (!in_array($wordLower, $stopWords) || $isProperName);
+            });
+
+            if (empty($searchTerms)) {
+                return [];
+            }
+
+            Log::info('Metadata search triggered', [
+                'original_message' => $message,
+                'search_terms' => array_values($searchTerms)
+            ]);
+
+            // Search for documents matching the terms in title or description
+            $query = Document::where('status', 'active')
+                ->with('folder:folder_id,folder_name,parent_folder_id');
+
+            // Add OR conditions for each search term
+            $query->where(function($q) use ($searchTerms) {
+                foreach ($searchTerms as $term) {
+                    $q->orWhere('title', 'LIKE', "%{$term}%")
+                      ->orWhere('description', 'LIKE', "%{$term}%");
+                }
+            });
+
+            $documents = $query->limit(10)->get();
+
+            if ($documents->isEmpty()) {
+                return [];
+            }
+
+            // Build context for AI
+            $context = "\n\n=== DOCUMENT METADATA SEARCH RESULTS ===\n\n";
+            $context .= "I found these documents in your system that match your search:\n\n";
+
+            $documentReferences = [];
+
+            foreach ($documents as $doc) {
+                $folderPath = $this->buildFolderPath($doc->folder);
+                $context .= "Document: \"{$doc->title}\"\n";
+                $context .= "  └─ Folder: {$folderPath}\n";
+                if ($doc->description) {
+                    $context .= "  └─ Description: {$doc->description}\n";
+                }
+                $context .= "\n";
+
+                $documentReferences[] = [
+                    'doc_id' => $doc->doc_id,
+                    'title' => $doc->title,
+                    'folder_id' => $doc->folder_id,
+                    'folder_name' => $doc->folder ? $doc->folder->folder_name : null,
+                ];
+            }
+
+            $context .= "\n=== RESPONSE INSTRUCTIONS ===\n";
+            $context .= "Tell the user you found these documents. List them by title and mention clickable links will appear below.\n";
+
+            return [
+                'context' => $context,
+                'count' => $documents->count(),
+                'documents' => $documentReferences
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Metadata search failed', [
+                'error' => $e->getMessage(),
+                'message' => $message,
+                'user_id' => $userId
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Check if semantic search should be triggered
+     */
+    private function shouldTriggerSemanticSearch(string $message): bool
+    {
+        // Trigger on content queries
+        $hasContentQuery = preg_match('/(does|has|find|search|look for|check if|tell me if|show me).*(have|has|contain|include|mention)/i', $message) ||
+                          preg_match('/\b(affidavit|certificate|resolution|contract|agreement|document|file)\b/i', $message);
+
+        // Trigger on names (potential person/org search)
+        $hasNames = preg_match('/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/', $message);
+
+        // Trigger on search keywords
+        $hasSearchKeywords = preg_match('/\b(find|search|locate|where|which|show|list)\b/i', $message);
+
+        return $hasContentQuery || $hasNames || $hasSearchKeywords;
+    }
+
+    /**
+     * Call AI Bridge semantic search service
+     */
+    private function callSemanticSearchService(string $message, int $userId): array
+    {
+        // Use Groq intelligent search if configured
+        if ($this->aiServiceType === 'groq') {
+            return $this->groqIntelligentSearch($message, $userId);
+        }
+
+        // Use BERT embeddings semantic search
+        $response = Http::timeout(30)
+            ->post("{$this->aiBridgeUrl}/api/documents/search", [
+                'query' => $message,
+                'limit' => 5,
+                'user_id' => $userId
+            ]);
+
+        if (!$response->successful()) {
+            Log::warning('Semantic search API error', ['status' => $response->status()]);
+            return [];
+        }
+
+        $data = $response->json();
+        return $data['results'] ?? [];
+    }
+
+    /**
+     * Use Groq to intelligently search through documents
+     */
+    private function groqIntelligentSearch(string $query, int $userId): array
+    {
+        try {
+            // Fetch recent documents with embeddings (content excerpts)
+            $documents = Document::where('created_by', $userId)
+                ->where('status', 'active')
+                ->with(['folder:folder_id,folder_name', 'embeddings'])
+                ->orderBy('created_at', 'desc')
+                ->take(50)
+                ->get();
+
+            if ($documents->isEmpty()) {
+                Log::info('No documents found for Groq intelligent search');
+                return [];
+            }
+
+            // Build document list for Groq
+            $documentList = $this->buildDocumentListForGroq($documents);
+
+            // Call Groq to identify relevant documents
+            $relevantDocIds = $this->askGroqToIdentifyDocuments($query, $documentList);
+
+            if (empty($relevantDocIds)) {
+                Log::info('Groq found no matching documents');
+                return [];
+            }
+
+            // Build results from identified documents
+            return $this->buildGroqSearchResults($documents, $relevantDocIds);
+
+        } catch (\Exception $e) {
+            Log::error('Groq intelligent search failed', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Build document list for Groq analysis
+     */
+    private function buildDocumentListForGroq($documents): string
+    {
+        $list = "=== AVAILABLE DOCUMENTS ===\n\n";
+
+        foreach ($documents as $doc) {
+            $list .= "ID: {$doc->doc_id}\n";
+            $list .= "Title: {$doc->title}\n";
+            $list .= "Type: {$doc->document_type}\n";
+
+            // Get content preview from embeddings or extracted text
+            $preview = '';
+            if ($doc->embeddings->isNotEmpty()) {
+                $preview = substr($doc->embeddings->first()->chunk_text, 0, 300);
+            } elseif ($doc->extracted_text) {
+                $preview = substr($doc->extracted_text, 0, 300);
+            }
+
+            if (!empty($preview)) {
+                $list .= "Content Preview: {$preview}...\n";
+            }
+
+            $list .= "\n";
+        }
+
+        return $list;
+    }
+
+    /**
+     * Ask Groq to identify relevant document IDs
+     */
+    private function askGroqToIdentifyDocuments(string $query, string $documentList): array
+    {
+        return $this->groqService->identifyRelevantDocuments($query, $documentList);
+    }
+
+    /**
+     * Build search results from Groq-identified documents
+     */
+    private function buildGroqSearchResults($documents, array $relevantDocIds): array
+    {
+        $results = [];
+
+        foreach ($documents as $doc) {
+            if (!in_array($doc->doc_id, $relevantDocIds)) {
+                continue;
+            }
+
+            // Get full content from embeddings or extracted text
+            $content = '';
+            if ($doc->embeddings->isNotEmpty()) {
+                $content = $doc->embeddings->first()->chunk_text;
+            } elseif ($doc->extracted_text) {
+                $content = substr($doc->extracted_text, 0, 1000);
+            }
+
+            $results[] = [
+                'doc_id' => $doc->doc_id,
+                'title' => $doc->title,
+                'matched_chunk' => $content,
+                'similarity_score' => 0.95 // High score since Groq identified it as relevant
+            ];
+        }
+
+        Log::info('Groq search results built', ['count' => count($results)]);
+        return $results;
+    }
+
+    /**
+     * Build context string from semantic search results
+     */
+    private function buildSemanticSearchContext(array $results): string
+    {
+        $context = "\n\n=== DOCUMENT CONTENT SEARCH RESULTS ===\n\n";
+
+        foreach ($results as $result) {
+            $doc = Document::with('folder:folder_id,folder_name')->find($result['doc_id']);
+            $folderName = $doc?->folder?->folder_name ?? 'No folder assigned';
+            $similarity = round($result['similarity_score'] * 100, 1);
+            $excerpt = substr($result['matched_chunk'], 0, 400);
+
+            $context .= "Document: \"{$result['title']}\" (ID: {$result['doc_id']})\n";
+            $context .= "Folder: {$folderName}\n";
+            $context .= "Relevance: {$similarity}%\n";
+            $context .= "Content: \"{$excerpt}...\"\n\n";
+        }
+
+        $context .= $this->getSemanticSearchInstructions();
+        return $context;
+    }
+
+    /**
+     * Get AI instructions for semantic search responses
+     */
+    private function getSemanticSearchInstructions(): string
+    {
+        return "\n=== RESPONSE INSTRUCTIONS ===\n" .
+               "MUST DO:\n" .
+               "- Answer using ONLY the content shown above\n" .
+               "- Quote specific text from the excerpts\n" .
+               "- State document titles only\n" .
+               "- If asked 'what folder?', reply with ONLY the folder name\n\n" .
+               "FORBIDDEN:\n" .
+               "- Creating multi-level folder paths\n" .
+               "- Using phrases like 'located in', 'found in'\n" .
+               "- Mentioning folders unless directly asked\n" .
+               "- Inventing information not in the context\n\n";
+    }
+
+    /**
+     * Extract document map from search results
+     */
+    private function extractDocumentMap(array $results): array
+    {
+        $map = [];
+        foreach ($results as $result) {
+            $docId = $result['doc_id'];
+            if (!isset($map[$docId])) {
+                $map[$docId] = [
+                    'doc_id' => $docId,
+                    'title' => $result['title'],
+                    'matches' => 0
+                ];
+            }
+            $map[$docId]['matches']++;
+        }
+        return array_values($map);
     }
 }

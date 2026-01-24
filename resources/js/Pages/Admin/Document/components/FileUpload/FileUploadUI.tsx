@@ -40,7 +40,7 @@ const FileUploadUI: React.FC<FileUploadUIProps> = ({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       handleFileSelect(files[0]);
@@ -59,10 +59,16 @@ const FileUploadUI: React.FC<FileUploadUIProps> = ({
   };
 
   return (
-    <div className="w-full bg-white/30 backdrop-blur-md rounded-2xl">
+    <div className="w-full rounded-2xl" style={{
+      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+      backdropFilter: 'blur(40px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+    }}>
       {/* Header */}
-      <div className="px-8 py-5 bg-gray-50 border-b border-gray-300 rounded-t-lg">
-        <h2 className="text-base font-bold text-gray-900 tracking-wide">
+      <div className="px-8 py-5 border-b border-white/30 rounded-t-2xl">
+        <h2 className="text-base font-bold text-white/90 tracking-wide">
           UPLOAD YOUR FILE HERE
         </h2>
       </div>
@@ -78,7 +84,7 @@ const FileUploadUI: React.FC<FileUploadUIProps> = ({
               onDrop={handleDrop}
               onBrowseFiles={handleBrowseFiles}
             />
-            
+
             <input
               ref={fileInputRef}
               type="file"
@@ -98,7 +104,7 @@ const FileUploadUI: React.FC<FileUploadUIProps> = ({
           isUploading={isUploading}
           onConfirm={handleConfirmUpload}
           onCancel={handleCancelUpload}
-          uploadedFile={uploadedFile} 
+          uploadedFile={uploadedFile}
         />
       )}
     </div>

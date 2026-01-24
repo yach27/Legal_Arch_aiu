@@ -11,9 +11,7 @@ import ReportHeader from "./components/ReportHeader";
 import ReportFilters from "./components/ReportFilters";
 import StatCard from "./components/StatCard";
 import CategoryChart from "./components/CategoryChart";
-import RecentActivity from "./components/RecentActivity";
 import ReportActionCards from "./components/ReportActionCards";
-import axios from 'axios';
 
 interface ReportStats {
     totalDocuments: number;
@@ -32,17 +30,20 @@ interface CategoryData {
     trend: string;
 }
 
-interface ActivityData {
-    action: string;
-    document: string;
-    user: string;
-    time: string;
+
+interface PaginationData {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+    from: number;
+    to: number;
 }
 
 interface ReportProps {
     stats: ReportStats;
     documentsByCategory: CategoryData[];
-    recentActivity: ActivityData[];
+    pagination?: PaginationData;
     [key: string]: any;
 }
 
@@ -53,9 +54,11 @@ const Reports = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const periodFromUrl = urlParams.get('period') as 'week' | 'month' | 'year' | null;
     const folderFromUrl = urlParams.get('folder');
+    const pageFromUrl = urlParams.get('page');
 
     const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year'>(periodFromUrl || 'month');
     const [selectedCategory, setSelectedCategory] = useState<string>(folderFromUrl || 'all');
+    const [currentPage, setCurrentPage] = useState<number>(pageFromUrl ? parseInt(pageFromUrl) : 1);
 
     // Use real data from backend with fallback
     const stats: ReportStats = props.stats || {
@@ -69,8 +72,7 @@ const Reports = () => {
     };
 
     const documentsByCategory: CategoryData[] = props.documentsByCategory || [];
-
-    const recentActivity: ActivityData[] = props.recentActivity || [];
+    const pagination: PaginationData | undefined = props.pagination;
 
     // Handle filter changes
     const handlePeriodChange = (period: 'week' | 'month' | 'year') => {
@@ -85,72 +87,20 @@ const Reports = () => {
         window.location.href = `/admin/reports?period=${selectedPeriod}&folder=${folder}`;
     };
 
-    const handleExportPDF = () => {
-        try {
-            // Open report in new window using form submission
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/admin/reports/export-pdf';
-            form.target = '_blank';
-
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            if (csrfToken) {
-                const csrfInput = document.createElement('input');
-                csrfInput.type = 'hidden';
-                csrfInput.name = '_token';
-                csrfInput.value = csrfToken;
-                form.appendChild(csrfInput);
-            }
-
-            const reportTypeInput = document.createElement('input');
-            reportTypeInput.type = 'hidden';
-            reportTypeInput.name = 'reportType';
-            reportTypeInput.value = 'general';
-            form.appendChild(reportTypeInput);
-
-            document.body.appendChild(form);
-            form.submit();
-            document.body.removeChild(form);
-        } catch (error) {
-            console.error('Error exporting PDF:', error);
-            alert('Failed to export PDF. Please try again.');
-        }
-    };
-
-    const handleExportExcel = async () => {
-        try {
-            const response = await axios.post('/admin/reports/export-excel', {
-                reportType: 'general'
-            }, {
-                responseType: 'blob'
-            });
-
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `report-${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error('Error exporting Excel:', error);
-            alert('Failed to export Excel. Please try again.');
-        }
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+        // Reload page with new page number
+        window.location.href = `/admin/reports?period=${selectedPeriod}&folder=${selectedCategory}&page=${page}`;
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-green-50/30">
-            <div className="absolute inset-0 opacity-5 pointer-events-none">
-                <div className="absolute inset-0" style={{
-                    backgroundImage: `radial-gradient(circle at 25% 25%, #10b981 0%, transparent 50%),
-                                     radial-gradient(circle at 75% 75%, #059669 0%, transparent 50%)`
-                }}></div>
-            </div>
-
-            <ReportHeader onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
+        <div className="min-h-screen">
+            <ReportHeader />
 
             <div className="px-8 py-6 space-y-6">
+                {/* Report Action Cards - Moved to top */}
+                <ReportActionCards />
+
                 <ReportFilters
                     selectedPeriod={selectedPeriod}
                     selectedCategory={selectedCategory}
@@ -158,7 +108,7 @@ const Reports = () => {
                     onCategoryChange={handleCategoryChange}
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <StatCard
                         icon={<FileText className="w-6 h-6" />}
                         title="Total Documents"
@@ -169,7 +119,7 @@ const Reports = () => {
                         icon={<Calendar className="w-6 h-6" />}
                         title="Documents This Month"
                         value={stats.documentsThisMonth.toString()}
-                        subtitle={`+${stats.documentsThisWeek} this week`}
+                        subtitle={`+${stats.documentsThisWeek} last 7 days`}
                     />
                     <StatCard
                         icon={<Users className="w-6 h-6" />}
@@ -177,19 +127,13 @@ const Reports = () => {
                         value={stats.activeUsers.toString()}
                         subtitle="Last 30 days"
                     />
-                    <StatCard
-                        icon={<FolderOpen className="w-6 h-6" />}
-                        title="Storage Used"
-                        value={stats.storageUsed}
-                        subtitle="Of available space"
-                    />
                 </div>
 
-                <CategoryChart data={documentsByCategory} />
-
-                <RecentActivity activities={recentActivity} />
-
-                <ReportActionCards />
+                <CategoryChart
+                    data={documentsByCategory}
+                    pagination={pagination}
+                    onPageChange={handlePageChange}
+                />
             </div>
         </div>
     );

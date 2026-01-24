@@ -2,9 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+    background-color: #f9fafb;
+}
+
 body {
     font-family: "Poppins", sans-serif;
-    background-color: white;
+    background-color: #f9fafb;
+}
+
+#app {
+    min-height: 100vh;
+    background-color: #f9fafb;
+}
+
+/* Scroll performance optimization */
+* {
+    scroll-behavior: smooth;
+}
+
+html {
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Optimize GPU acceleration for scrollable containers */
+.min-h-screen {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    will-change: scroll-position;
 }
 
 /* Enhanced Edge compatibility fixes */
@@ -24,21 +50,67 @@ body {
 }
 
 /* Spacing utilities for Edge */
-.p-4 { padding: 1rem !important; }
-.p-6 { padding: 1.5rem !important; }
-.p-8 { padding: 2rem !important; }
-.px-4 { padding-left: 1rem !important; padding-right: 1rem !important; }
-.px-6 { padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
-.py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
-.py-6 { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
-.py-8 { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+.p-4 {
+    padding: 1rem !important;
+}
 
-.m-4 { margin: 1rem !important; }
-.mx-auto { margin-left: auto !important; margin-right: auto !important; }
-.mt-4 { margin-top: 1rem !important; }
-.mb-4 { margin-bottom: 1rem !important; }
-.mb-6 { margin-bottom: 1.5rem !important; }
-.mb-8 { margin-bottom: 2rem !important; }
+.p-6 {
+    padding: 1.5rem !important;
+}
+
+.p-8 {
+    padding: 2rem !important;
+}
+
+.px-4 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
+
+.px-6 {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+}
+
+.py-4 {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+}
+
+.py-6 {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+}
+
+.py-8 {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+}
+
+.m-4 {
+    margin: 1rem !important;
+}
+
+.mx-auto {
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.mt-4 {
+    margin-top: 1rem !important;
+}
+
+.mb-4 {
+    margin-bottom: 1rem !important;
+}
+
+.mb-6 {
+    margin-bottom: 1.5rem !important;
+}
+
+.mb-8 {
+    margin-bottom: 2rem !important;
+}
 
 /* Grid system for Edge */
 .grid {
@@ -65,20 +137,47 @@ body {
 }
 
 /* Text utilities */
-.text-center { text-align: center !important; }
-.text-left { text-align: left !important; }
-.text-white { color: white !important; }
-.text-gray-600 { color: #6b7280 !important; }
-.text-green-700 { color: #047857 !important; }
+.text-center {
+    text-align: center !important;
+}
+
+.text-left {
+    text-align: left !important;
+}
+
+.text-white {
+    color: white !important;
+}
+
+.text-gray-600 {
+    color: #6b7280 !important;
+}
+
+.text-green-700 {
+    color: #047857 !important;
+}
 
 /* Background utilities */
-.bg-white { background-color: white !important; }
-.bg-green-700 { background-color: #047857 !important; }
-.bg-green-600 { background-color: #059669 !important; }
+.bg-white {
+    background-color: white !important;
+}
+
+.bg-green-700 {
+    background-color: #047857 !important;
+}
+
+.bg-green-600 {
+    background-color: #059669 !important;
+}
 
 /* Border radius */
-.rounded { border-radius: 0.25rem !important; }
-.rounded-lg { border-radius: 0.5rem !important; }
+.rounded {
+    border-radius: 0.25rem !important;
+}
+
+.rounded-lg {
+    border-radius: 0.5rem !important;
+}
 
 /* Button styles */
 .btn {
@@ -90,8 +189,13 @@ body {
 }
 
 /* Width utilities */
-.w-full { width: 100% !important; }
-.max-w-7xl { max-width: 80rem !important; }
+.w-full {
+    width: 100% !important;
+}
+
+.max-w-7xl {
+    max-width: 80rem !important;
+}
 
 /* Edge compatibility fixes */
 .flex {
@@ -134,33 +238,43 @@ body {
         flex-direction: row;
     }
 }
+
 .active-link {
-    color: #eab308; /* Tailwind's text-yellow-500 */
+    color: #eab308;
+    /* Tailwind's text-yellow-500 */
     text-decoration: underline;
     text-underline-offset: 8px;
 }
+
 @keyframes wave {
     0% {
         transform: rotate(0deg);
     }
+
     10% {
         transform: rotate(14deg);
     }
+
     20% {
         transform: rotate(-8deg);
     }
+
     30% {
         transform: rotate(14deg);
     }
+
     40% {
         transform: rotate(-4deg);
     }
+
     50% {
         transform: rotate(10deg);
     }
+
     60% {
         transform: rotate(0deg);
     }
+
     100% {
         transform: rotate(0deg);
     }
@@ -178,6 +292,7 @@ body {
         transform: translateX(400px);
         opacity: 0;
     }
+
     100% {
         transform: translateX(0);
         opacity: 1;
@@ -188,6 +303,7 @@ body {
     0% {
         width: 100%;
     }
+
     100% {
         width: 0%;
     }
@@ -199,4 +315,87 @@ body {
 
 .animate-progress {
     animation: progress linear forwards;
+}
+
+/* Glassmorphism Blob Animations */
+@keyframes blob {
+    0% {
+        transform: translate(0px, 0px) scale(1);
+    }
+
+    33% {
+        transform: translate(30px, -50px) scale(1.1);
+    }
+
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+
+    100% {
+        transform: translate(0px, 0px) scale(1);
+    }
+}
+
+.animate-blob {
+    animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+    animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+    animation-delay: 4s;
+}
+
+/* Custom Scrollbar for Dropdown */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(229, 231, 235, 0.3);
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.6) 0%, rgba(34, 197, 94, 0.4) 100%);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.8) 0%, rgba(34, 197, 94, 0.6) 100%);
+}
+
+/* Firefox scrollbar */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(34, 197, 94, 0.5) rgba(229, 231, 235, 0.3);
+}
+
+/* Green Scrollbar for AI Assistant Sidebar */
+.green-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.green-scrollbar::-webkit-scrollbar-track {
+    background: rgba(20, 74, 24, 0.3);
+    border-radius: 10px;
+}
+
+.green-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(34, 139, 34, 0.6);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.green-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(34, 139, 34, 0.8);
+}
+
+/* Firefox scrollbar */
+.green-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(34, 139, 34, 0.6) rgba(20, 74, 24, 0.3);
 }

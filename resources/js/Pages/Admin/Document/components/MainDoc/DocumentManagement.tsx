@@ -1,17 +1,20 @@
-// DocumentManagement.tsx - Fixed to use folderService for folders
 import React, { useState, useEffect, JSX } from 'react';
-import { Plus, FileText, FolderPlus } from 'lucide-react';
+import { flushSync } from 'react-dom';
+import { createPortal } from 'react-dom';
+import { Plus, FileText, FolderPlus, Folder as FolderIcon, Archive, ScanLine, ArrowUpDown, LayoutGrid, List } from 'lucide-react';
 
-// Import components
+
 import SearchBar from '../SearhBar/SearchBar';
 import FolderCard from '../Folder/FolderCard';
 import DocumentListItem from './DocumentListItem';
+import DocumentGridItem from './DocumentGridItem';
 import BreadcrumbNav from './BreadcrumbNav';
 import AddFolderModal from '../Folder/AddFolderModal';
-import FileUploadUI from '../FileUpload/FileUploadUI';
+import MultiFileUploadUI from '../FileUpload/MultiFileUploadUI';
 import FilterModal from '../Filter/FilterModal';
+import ScanDocumentModal from '../ScanDocument/ScanDocumentModal';
+import DocumentSidebar from '../DocumentSidebar/DocumentSidebar';
 
-// Import services and types - FIXED: Correct paths for Laravel Inertia
 import realDocumentService from '../../services/realDocumentService';
 import folderService from '../../services/folderService';
 import { Folder, Document, DocumentFilters } from '../../types/types';
@@ -22,11 +25,16 @@ interface DocumentManagementState {
   searchTerm: string;
   currentFolder: Folder | null;
   viewMode: ViewMode;
-  folders: Folder[];
+  folders: Folder[]; // Root folders for grid view
+  subfolders: Folder[]; // Subfolders for document view
   documents: Document[];
   loading: boolean;
   filters: DocumentFilters;
+  sortField: 'name' | 'date';
+  sortOrder: 'asc' | 'desc';
+  documentViewMode: 'list' | 'grid';
 }
+
 
 const DocumentManagement: React.FC = () => {
   // State management with TypeScript
@@ -35,27 +43,47 @@ const DocumentManagement: React.FC = () => {
     currentFolder: null,
     viewMode: 'folders',
     folders: [],
+    subfolders: [],
     documents: [],
     loading: false,
-    filters: {}
+    filters: {},
+    sortField: 'date',
+    sortOrder: 'desc',
+    documentViewMode: 'list'
   });
 
+
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const handleCreate = async () => {
-    // This callback is called after the modal successfully creates the folder
-    // We need to refresh both the folders list and counts
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const sortMenuRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+        setIsSortMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleCreate = async (folderName?: string) => {
     try {
-      console.log('Folder created, refreshing list...');
-      await loadFolders(); // Reload folders to show the new one
-      await refreshCounts(); // Refresh counts as well
+      await loadFolders(currentFolder?.folder_id ?? null);
+      await refreshCounts();
     } catch (error) {
       console.error('Error refreshing folders:', error);
-      // Still refresh the page to show the new folder
       window.location.reload();
     }
   };
@@ -66,9 +94,13 @@ const DocumentManagement: React.FC = () => {
     currentFolder,
     viewMode,
     folders,
+    subfolders,
     documents,
     loading,
-    filters
+    filters,
+    sortField,
+    sortOrder,
+    documentViewMode
   } = state;
 
   // Load initial data
@@ -76,14 +108,18 @@ const DocumentManagement: React.FC = () => {
     loadInitialData();
   }, []);
 
-  // Check for folder query parameter and navigate to that folder
+  // Check for folder query parameter and navigate to that folder (only once on initial load)
+  const hasNavigatedFromUrl = React.useRef(false);
   useEffect(() => {
+    if (hasNavigatedFromUrl.current || folders.length === 0) return;
+
     const urlParams = new URLSearchParams(window.location.search);
     const folderId = urlParams.get('folder');
 
-    if (folderId && folders.length > 0) {
+    if (folderId) {
       const targetFolder = folders.find(f => f.folder_id === parseInt(folderId));
       if (targetFolder) {
+        hasNavigatedFromUrl.current = true;
         handleFolderClick(targetFolder);
       }
     }
@@ -92,14 +128,22 @@ const DocumentManagement: React.FC = () => {
   // Track if we just opened a folder to prevent double loading
   const justOpenedFolder = React.useRef(false);
 
+  // Check if any document-level filters are active (year, status)
+  const hasDocumentFilters = filters.status === 'archived' || filters.year !== undefined;
+
   // Load data when search term or filters change (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (viewMode === 'folders') {
         setState(prev => ({ ...prev, loading: true }));
-        loadFolders();
+        // Show documents when document-level filters are active (archived, year)
+        if (hasDocumentFilters) {
+          loadDocuments(); // Load documents when year or archived filter is active
+        } else {
+          loadFolders(); // Load folders by default
+        }
       } else if (currentFolder && !justOpenedFolder.current) {
-        // Reload documents when search/filters change, including when cleared
+        // Reload documents when search/filters change
         setState(prev => ({ ...prev, loading: true }));
         loadDocuments();
       }
@@ -110,12 +154,10 @@ const DocumentManagement: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [searchTerm, filters]);
 
-  // Data loading functions - Optimized
   const loadInitialData = async (): Promise<void> => {
     setState(prev => ({ ...prev, loading: true }));
     try {
-      // Load folders
-      await loadFolders();
+      await loadFolders(); // Load folders by default on initial load
       setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
       console.error('Error loading initial data:', error);
@@ -123,61 +165,20 @@ const DocumentManagement: React.FC = () => {
     }
   };
 
-  // Upload Handlers
-  const handleUploadSuccess = async (file: File): Promise<void> => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder_id', currentFolder?.folder_id?.toString() || '');
-      formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
-
-      const response = await fetch('/admin/documents', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'X-CSRF-TOKEN': window.document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-        },
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setIsUploadModalOpen(false);
-        await loadDocuments();
-        console.log('Document uploaded successfully:', result.document);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      handleUploadError(error as Error);
-    }
-  };
-
-  const handleUploadError = (error: Error): void => {
-    console.error('Upload failed:', error);
-    alert('Upload failed: ' + error.message);
-  };
-
-  // Load folders - Optimized for speed
-  const loadFolders = async (): Promise<void> => {
+  const loadFolders = async (parentId: number | null = null): Promise<void> => {
     try {
       let foldersData: Folder[];
 
       if (searchTerm) {
         foldersData = await folderService.searchFolders(searchTerm);
-      } else if (currentFolder) {
-        foldersData = await folderService.getFoldersByParent(currentFolder.folder_id);
       } else {
-        foldersData = await folderService.getFoldersByParent(null);
+        foldersData = await folderService.getFoldersByParent(parentId);
       }
 
-      // Sort and display folders immediately
       foldersData = folderService.sortFolders(foldersData, 'updated_at', 'desc');
       setState(prev => ({ ...prev, folders: foldersData, loading: false }));
       setInitialLoading(false);
 
-      // Load document counts in background
       if (foldersData.length > 0) {
         loadFolderDocumentCounts(foldersData);
       }
@@ -190,12 +191,12 @@ const DocumentManagement: React.FC = () => {
 
   const loadDocuments = async (): Promise<void> => {
     try {
-      // Don't set loading here - it's already set by handleFolderClick or useEffect
       let documentsData: Document[];
 
-      // Always pass the folder_id along with search/filters to search within the current folder
-      if (searchTerm || Object.keys(filters).length > 0) {
-        // Merge current folder with filters
+      // Handle status filter
+      if (filters.status === 'archived') {
+        documentsData = await realDocumentService.getArchivedDocuments(currentFolder?.folder_id);
+      } else if (searchTerm || Object.keys(filters).length > 0) {
         const mergedFilters = {
           ...filters,
           ...(currentFolder && { folder_id: currentFolder.folder_id })
@@ -212,43 +213,108 @@ const DocumentManagement: React.FC = () => {
     }
   };
 
-  // Event handlers
   const handleSearchChange = (term: string): void => {
     setState(prev => ({ ...prev, searchTerm: term }));
   };
 
   const handleFolderClick = async (folder: Folder): Promise<void> => {
-    // Set flag to prevent useEffect from double-loading
     justOpenedFolder.current = true;
 
-    // Clear search term and filters when opening a folder
+    // Update state synchronously - React 18 batches automatically
+    setIsTransitioning(true);
     setState(prev => ({
       ...prev,
       currentFolder: folder,
       viewMode: 'documents',
       searchTerm: '',
-      filters: {}, // Clear filters when opening a folder
+      filters: {},
       loading: true,
-      documents: [] // Clear documents to prevent showing old data
+      documents: [],
+      subfolders: []
     }));
 
-    // Load documents immediately, don't wait for useEffect
     try {
-      const documentsData = await realDocumentService.getAllDocuments(folder.folder_id);
-      setState(prev => ({ ...prev, documents: documentsData, loading: false }));
+      // Start both requests in parallel but don't wait for both
+      const documentsPromise = realDocumentService.getAllDocuments(folder.folder_id);
+      const subfoldersPromise = folderService.getFoldersByParent(folder.folder_id);
+
+      // Wait for subfolders first (usually faster) and show them immediately
+      const subfoldersData = await subfoldersPromise;
+
+      // CRITICAL: Filter subfolders - exclude parent and grandparent
+      const filteredSubfolders = subfoldersData.filter(f =>
+        f.folder_id !== folder.folder_id &&
+        f.folder_id !== folder.parent_folder_id
+      );
+
+      // Show subfolders ASAP while documents are still loading
+      flushSync(() => {
+        setState(prev => {
+          if (prev.currentFolder?.folder_id === folder.folder_id) {
+            return {
+              ...prev,
+              subfolders: filteredSubfolders,
+              loading: true // Keep loading true for documents
+            };
+          }
+          return prev;
+        });
+        setIsTransitioning(false); // Allow render of subfolders
+      });
+
+      // Now wait for documents
+      const documentsData = await documentsPromise;
+
+      // Update with documents
+      flushSync(() => {
+        setState(prev => {
+          if (prev.currentFolder?.folder_id === folder.folder_id) {
+            return {
+              ...prev,
+              documents: documentsData,
+              loading: false
+            };
+          }
+          return prev;
+        });
+      });
+
+      // Load counts in background without blocking
+      if (filteredSubfolders.length > 0) {
+        loadFolderDocumentCounts(filteredSubfolders);
+      }
     } catch (error) {
-      console.error('Error loading documents:', error);
-      setState(prev => ({ ...prev, documents: [], loading: false }));
+      console.error('Error loading folder contents:', error);
+      flushSync(() => {
+        setState(prev => ({ ...prev, documents: [], subfolders: [], loading: false }));
+        setIsTransitioning(false);
+      });
     }
   };
 
-  const handleBackToFolders = (): void => {
-    setState(prev => ({
-      ...prev,
-      currentFolder: null,
-      viewMode: 'folders',
-      searchTerm: ''
-    }));
+  const handleBackToFolders = async (): Promise<void> => {
+    justOpenedFolder.current = false;
+
+    if (currentFolder?.parent_folder_id) {
+      const parentFolder = await folderService.getFolderById(currentFolder.parent_folder_id);
+      handleFolderClick(parentFolder);
+    } else {
+      setState({
+        searchTerm: '',
+        currentFolder: null,
+        viewMode: 'folders',
+        folders: [],
+        subfolders: [],
+        documents: [],
+        loading: true,
+        filters: {},
+        sortField: 'date',
+        sortOrder: 'desc',
+        documentViewMode: 'list'
+      });
+
+      await loadFolders(null);
+    }
   };
 
   const handleFilterClick = (): void => {
@@ -262,28 +328,28 @@ const DocumentManagement: React.FC = () => {
 
   const handleAddFolder = (): void => {
     setIsModalOpen(true);
-    console.log('Add folder clicked');
   };
 
   const handleAddDocument = (): void => {
     setIsUploadModalOpen(true);
   };
 
-  // Helper functions - FIXED: Use real document service for folder operations
+  const handleScanDocument = (): void => {
+    setIsScanModalOpen(true);
+  };
+
   const [folderDocumentCounts, setFolderDocumentCounts] = useState<Record<number, number>>({});
 
   const getFolderDocumentCount = (folderId: number): number => {
     return folderDocumentCounts[folderId] || 0;
   };
 
-  // Load document counts for all folders (optimized)
   const loadFolderDocumentCounts = async (foldersList: Folder[]): Promise<void> => {
     if (foldersList.length === 0) return;
 
     try {
       const folderIds = foldersList.map(f => f.folder_id);
 
-      // Try bulk loading first (if backend supports it)
       try {
         const bulkCounts = await realDocumentService.getBulkFolderCounts?.(folderIds);
         if (bulkCounts) {
@@ -294,7 +360,6 @@ const DocumentManagement: React.FC = () => {
         console.log('Bulk loading not available, using individual calls');
       }
 
-      // Fallback to parallel individual calls
       const counts: Record<number, number> = {};
       const countPromises = folderIds.map(async (folderId) => {
         try {
@@ -313,13 +378,6 @@ const DocumentManagement: React.FC = () => {
   };
 
 
-  // FIXED: Make this async since folderService methods are now async
-  const buildBreadcrumbPath = async (): Promise<Folder[]> => {
-    if (!currentFolder) return [];
-    return await folderService.buildBreadcrumbPath(currentFolder.folder_id);
-  };
-
-  // FIXED: Make this async to handle folderService async methods
   const getTotalFoldersCount = async (): Promise<number> => {
     try {
       return await folderService.getTotalFoldersCount();
@@ -332,8 +390,8 @@ const DocumentManagement: React.FC = () => {
   const renderEmptyFolderState = (): JSX.Element => (
     <div className="col-span-full flex flex-col items-center justify-center py-12 text-gray-500">
       <div className="text-6xl mb-4">📁</div>
-      <h3 className="text-lg font-medium mb-2">No folders found</h3>
-      <p className="text-sm text-center max-w-md">
+      <h3 className="text-lg font-semibold mb-2 text-gray-700">No folders found</h3>
+      <p className="text-sm text-center max-w-md font-normal text-gray-600">
         {searchTerm
           ? `No folders match "${searchTerm}". Try adjusting your search terms.`
           : 'Create your first folder to get started organizing your documents.'}
@@ -341,7 +399,7 @@ const DocumentManagement: React.FC = () => {
       {!searchTerm && (
         <button
           onClick={handleAddFolder}
-          className="mt-4 flex items-center gap-2 bg-green-800 text-white px-4 py-2 rounded-lg hover:bg-green-900 transition-colors"
+          className="mt-4 flex items-center gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg transition-all shadow-sm hover:shadow-md font-medium"
         >
           <FolderPlus className="w-4 h-4" />
           <span>Create First Folder</span>
@@ -352,19 +410,19 @@ const DocumentManagement: React.FC = () => {
 
   const renderEmptyDocumentState = (): JSX.Element => (
     <div className="p-8 text-center text-gray-500">
-      <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-      <h3 className="text-lg font-medium mb-2">No documents found</h3>
-      <p className="text-sm max-w-md mx-auto">
+      <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+      <h3 className="text-lg font-semibold mb-2 text-gray-700">No documents found</h3>
+      <p className="text-sm max-w-md mx-auto font-normal text-gray-600">
         {searchTerm
           ? `No documents match "${searchTerm}" in this folder. Try adjusting your search terms.`
           : currentFolder
-          ? 'This folder is empty. Upload your first document to get started.'
-          : 'No documents available'}
+            ? 'This folder is empty. Upload your first document to get started.'
+            : 'No documents available'}
       </p>
       {currentFolder && !searchTerm && (
         <button
           onClick={handleAddDocument}
-          className="mt-4 flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors mx-auto"
+          className="mt-4 flex items-center gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg transition-all shadow-sm hover:shadow-md mx-auto font-medium"
         >
           <Plus className="w-4 h-4" />
           <span>Upload Document</span>
@@ -380,11 +438,47 @@ const DocumentManagement: React.FC = () => {
     return `${count} ${documentText}${searchText}`;
   };
 
-  // FIXED: Create states for real counts display
   const [folderCount, setFolderCount] = useState<number>(0);
   const [documentCount, setDocumentCount] = useState<number>(0);
-  
-  // Helper function to refresh counts
+
+  const handleSortSelection = (field: 'name' | 'date', order: 'asc' | 'desc') => {
+    setState(prev => ({ ...prev, sortField: field, sortOrder: order }));
+    setIsSortMenuOpen(false);
+  };
+
+  const getSortedItems = (items: any[]): any[] => {
+    return [...items].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      if (sortField === 'name') {
+        aValue = a.folder_name || a.title || '';
+        bValue = b.folder_name || b.title || '';
+      } else {
+        aValue = new Date(a.updated_at).getTime();
+        bValue = new Date(b.updated_at).getTime();
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortOrder === 'asc'
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+  };
+
+  const sortedSubfolders = getSortedItems(subfolders) as Folder[];
+  const sortedDocuments = getSortedItems(documents) as Document[];
+  const sortedFolders = getSortedItems(folders) as Folder[];
+
+
+
   const refreshCounts = async () => {
     try {
       const [folderTotal, documentTotal] = await Promise.all([
@@ -403,204 +497,486 @@ const DocumentManagement: React.FC = () => {
   }, [folders]); // Update when folders change
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">DOCUMENTS</h1>
-            <p className="text-gray-600 mt-1">
-             Hi
-            </p>
-            {/* Statistics - FIXED: Use real database counts */}
-            <div className="flex items-center gap-6 mt-4 text-sm text-gray-500">
-              <span>{folderCount} folders</span>
-              <span>{documentCount} documents</span>
-              {currentFolder && (
-                <span>
-                  {getFolderDocumentCount(currentFolder.folder_id)} documents in current folder
-                </span>
-              )}
-            </div>
-          </div>
+    <div className="flex h-full bg-gray-50">
+      {/* Sidebar */}
+      <DocumentSidebar
+        currentFolder={state.currentFolder}
+        onFolderSelect={(folder) => {
+          if (folder) {
+            handleFolderClick(folder);
+          } else {
+            setState(prev => ({
+              ...prev,
+              currentFolder: null,
+              viewMode: 'folders',
+              searchTerm: '',
+              filters: {},
+              documents: [],
+              subfolders: [],
+              loading: true // Add loading back to prevent double declaration error if it was missing
+            }));
+            loadFolders(null);
+          }
+        }}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={setSidebarCollapsed}
+      />
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleAddFolder}
-              className="flex items-center gap-2 bg-green-800 text-white px-4 py-2 rounded-lg hover:bg-yellow-500 transition-colors"
-              type="button"
-            >
-              <FolderPlus className="w-5 h-5" />
-              <span>Add Folder</span>
-            </button>
-
-            <button
-              onClick={handleAddDocument}
-              className="flex items-center gap-2 bg-green-800 text-white px-4 py-2 rounded-lg hover:bg-yellow-500 transition-colors"
-              type="button"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Add Document</span>
-            </button>
-          </div>
-
-          <AddFolderModal
-            isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
-            onCreate={handleCreate}
-          />
-        </div>
-
-        {/* Search Bar */}
-        <SearchBar
-          searchTerm={searchTerm}
-          onSearchChange={handleSearchChange}
-          onFilterClick={handleFilterClick}
-        />
-
-        {/* Navigation */}
-        {viewMode === 'documents' && (
-          <BreadcrumbNav
-            currentFolder={currentFolder}
-            onNavigate={handleBackToFolders}
-            breadcrumbPath={[]} // We'll fix this separately since it needs to be async
-          />
-        )}
-
-        {/* Loading State - Skeleton */}
-        {initialLoading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
-                  <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                    <div className="h-3 bg-gray-100 rounded w-3/4"></div>
+      {/* Main Content */}
+      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-72'}`}>
+        <div className="flex-1 overflow-y-auto p-6 pb-60" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="max-w-7xl mx-auto">
+            {/* Header - Forest Green Design */}
+            <div className="rounded-xl shadow-sm border border-green-100/50 p-6 mb-6" style={{ backgroundColor: '#1b5e20' }}>
+              <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-6">
+                <div>
+                  <h1 className="text-3xl font-bold text-white">DOCUMENTS</h1>
+                  <p className="text-gray-200 mt-1 font-normal">
+                    Manage your legal documents and folders
+                  </p>
+                  <div className="flex items-center gap-6 mt-4 text-sm text-gray-300 font-normal">
+                    <span>{folderCount} folders</span>
+                    <span>{documentCount} documents</span>
+                    {currentFolder && (
+                      <span>
+                        {getFolderDocumentCount(currentFolder.folder_id)} documents in current folder
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <div className="h-3 bg-gray-100 rounded w-20"></div>
-                  <div className="h-3 bg-gray-100 rounded w-16"></div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleAddFolder}
+                    className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 shadow-sm hover:shadow-md"
+                    type="button"
+                  >
+                    <FolderPlus className="w-5 h-5" />
+                    <span>Add Folder</span>
+                  </button>
+
+                  <button
+                    onClick={handleAddDocument}
+                    className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 shadow-sm hover:shadow-md"
+                    type="button"
+                  >
+                    <Plus className="w-5 h-5" />
+                    <span>Add Document</span>
+                  </button>
+
+                  <button
+                    onClick={handleScanDocument}
+                    className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 shadow-sm hover:shadow-md"
+                    type="button"
+                  >
+                    <ScanLine className="w-5 h-5" />
+                    <span>Scan Document</span>
+                  </button>
+
+                  <div className="relative" ref={sortMenuRef}>
+                    <button
+                      onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
+                      className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2.5 rounded-lg font-medium transition-all shadow-sm backdrop-blur-sm"
+                      type="button"
+                    >
+                      <ArrowUpDown className="w-5 h-5" />
+                      <span>{sortField === 'name' ? 'Name' : 'Date'}</span>
+                    </button>
+
+                    {isSortMenuOpen && (
+                      <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="px-4 py-2 border-b border-gray-50 mb-1">
+                          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Sort By</span>
+                        </div>
+
+                        <button
+                          onClick={() => handleSortSelection('name', 'asc')}
+                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between hover:bg-green-50 hover:text-green-700 transition-colors ${sortField === 'name' && sortOrder === 'asc' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'}`}
+                        >
+                          <span>Name (A-Z)</span>
+                          {sortField === 'name' && sortOrder === 'asc' && <span className="text-green-600">✓</span>}
+                        </button>
+
+                        <button
+                          onClick={() => handleSortSelection('name', 'desc')}
+                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between hover:bg-green-50 hover:text-green-700 transition-colors ${sortField === 'name' && sortOrder === 'desc' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'}`}
+                        >
+                          <span>Name (Z-A)</span>
+                          {sortField === 'name' && sortOrder === 'desc' && <span className="text-green-600">✓</span>}
+                        </button>
+
+                        <div className="my-1 border-t border-gray-50"></div>
+
+                        <button
+                          onClick={() => handleSortSelection('date', 'desc')}
+                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between hover:bg-green-50 hover:text-green-700 transition-colors ${sortField === 'date' && sortOrder === 'desc' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'}`}
+                        >
+                          <span>Date (Newest First)</span>
+                          {sortField === 'date' && sortOrder === 'desc' && <span className="text-green-600">✓</span>}
+                        </button>
+
+                        <button
+                          onClick={() => handleSortSelection('date', 'asc')}
+                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between hover:bg-green-50 hover:text-green-700 transition-colors ${sortField === 'date' && sortOrder === 'asc' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'}`}
+                        >
+                          <span>Date (Oldest First)</span>
+                          {sortField === 'date' && sortOrder === 'asc' && <span className="text-green-600">✓</span>}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+
+                  <div className="flex bg-white/10 rounded-lg p-1 border border-white/20 mr-2">
+                    <button
+                      onClick={() => setState(prev => ({ ...prev, documentViewMode: 'list' }))}
+                      className={`p-1.5 rounded-md transition-all ${documentViewMode === 'list' ? 'bg-white text-green-700 shadow-sm' : 'text-white hover:bg-white/10'}`}
+                      title="List View"
+                    >
+                      <List className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setState(prev => ({ ...prev, documentViewMode: 'grid' }))}
+                      className={`p-1.5 rounded-md transition-all ${documentViewMode === 'grid' ? 'bg-white text-green-700 shadow-sm' : 'text-white hover:bg-white/10'}`}
+                      title="Grid View"
+                    >
+                      <LayoutGrid className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
+
+                <AddFolderModal
+                  isOpen={isModalOpen}
+                  onClose={() => setIsModalOpen(false)}
+                  onCreate={handleCreate}
+                  parentFolderId={viewMode === 'documents' ? currentFolder?.folder_id : null}
+                />
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Quick Loading Indicator for Updates */}
-        {loading && !initialLoading && (
-          <div className="fixed top-4 right-4 bg-white shadow-lg rounded-lg px-4 py-2 border z-50">
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border border-blue-600 border-t-transparent"></div>
-              <span className="text-sm text-gray-600">Updating...</span>
             </div>
-          </div>
-        )}
 
-        {/* Content Area */}
-        {!initialLoading && (
-          <>
-            {viewMode === 'folders' ? (
+            {/* Search Bar */}
+            <SearchBar
+              searchTerm={searchTerm}
+              onSearchChange={handleSearchChange}
+              onFilterClick={handleFilterClick}
+            />
+
+            {/* Navigation */}
+            {viewMode === 'documents' && (
+              <BreadcrumbNav
+                currentFolder={currentFolder}
+                onNavigate={handleBackToFolders}
+                breadcrumbPath={[]} // We'll fix this separately since it needs to be async
+              />
+            )}
+
+            {/* Loading State - Skeleton */}
+            {initialLoading && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {folders.length > 0 ? (
-                  folders.map((folder) => (
-                    <FolderCard
-                      key={folder.folder_id}
-                      folder={folder}
-                      onFolderClick={handleFolderClick}
-                      documentCount={getFolderDocumentCount(folder.folder_id)}
-                      onFolderUpdated={async () => {
-                        await loadFolders();
-                        await refreshCounts();
-                      }}
-                    />
-                  ))
-                ) : (
-                  renderEmptyFolderState()
-                )}
-              </div>
-            ) : (
-              <div className="bg-white rounded-lg border border-gray-200">
-                <div className="p-4 border-b border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900">
-                        Documents in {currentFolder?.folder_name || 'All Documents'}
-                      </h2>
-                      <p className="text-sm text-gray-500">{getDocumentCountText()}</p>
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                        <div className="h-3 bg-gray-100 rounded w-3/4"></div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div className="h-3 bg-gray-100 rounded w-20"></div>
+                      <div className="h-3 bg-gray-100 rounded w-16"></div>
                     </div>
                   </div>
-                </div>
+                ))}
+              </div>
+            )}
 
-                <div className="divide-y divide-gray-200">
-                  {loading ? (
-                    <div className="p-8 text-center text-gray-500">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mx-auto mb-4"></div>
-                      <p className="text-sm">Loading documents...</p>
-                    </div>
-                  ) : documents.length > 0 ? (
-                    documents.map((document) => (
-                      <DocumentListItem
-                        key={document.doc_id}
-                        document={document}
-                      />
-                    ))
-                  ) : (
-                    renderEmptyDocumentState()
-                  )}
+            {/* Quick Loading Indicator for Updates */}
+            {loading && !initialLoading && (
+              <div className="fixed top-4 right-4 bg-white rounded-lg px-4 py-2 z-50 shadow-sm border border-gray-200">
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-green-600 border-t-transparent"></div>
+                  <span className="text-sm text-gray-700 font-medium">Updating...</span>
                 </div>
               </div>
             )}
-          </>
-        )}
-      </div>
 
-      {/* Upload Modal */}
-      {isUploadModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-lg w-full max-w-2xl mx-4 ml-64" style={{ marginLeft: '16rem' }}>
-            {/* Modal Header */}
-            <div className="flex justify-between items-center p-6 border-b">
-              <h3 className="text-lg font-semibold">Upload Document</h3>
-              <button
-                onClick={() => setIsUploadModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
-            </div>
+            {/* Content Area */}
+            {!initialLoading && (
+              <>
+                {viewMode === 'folders' && !currentFolder ? (
+                  <>
+                    {/* Show folders grid when no document-level filters are active */}
+                    {!hasDocumentFilters ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr" style={{ willChange: 'transform' }}>
+                        {loading ? (
+                          // Show loading skeleton when loading folders
+                          [...Array(6)].map((_, i) => (
+                            <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse">
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                                <div className="flex-1">
+                                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                                  <div className="h-3 bg-gray-100 rounded w-3/4"></div>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <div className="h-3 bg-gray-100 rounded w-20"></div>
+                                <div className="h-3 bg-gray-100 rounded w-16"></div>
+                              </div>
+                            </div>
+                          ))
+                        ) : sortedFolders.length > 0 ? (
+                          sortedFolders.map((folder) => (
+                            <FolderCard
+                              key={folder.folder_id}
+                              folder={folder}
+                              onFolderClick={handleFolderClick}
+                              documentCount={getFolderDocumentCount(folder.folder_id)}
+                              onFolderUpdated={async () => {
+                                await loadFolders(null);
+                                await refreshCounts();
+                              }}
+                            />
+                          ))
 
-            {/* Modal Content */}
-            <div className="p-6">
-              <FileUploadUI
-                maxFileSize={50 * 1024 * 1024} // 50MB limit
-                acceptedFileTypes=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
-                onUploadSuccess={async (file) => {
-                  // Navigate to AI processing page for metadata entry
-                  setIsUploadModalOpen(false);
-                  // Pass uploaded file info and document ID to AI processing page
-                  window.location.href = `/ai-processing?fileName=${encodeURIComponent(file.name)}&title=${encodeURIComponent(file.name)}`;
-                }}
-                onUploadError={(error) => {
-                  console.error('Upload error:', error);
-                  // Keep modal open to show error and allow retry
-                }}
-              />
-            </div>
+                        ) : (
+                          renderEmptyFolderState()
+                        )}
+                      </div>
+                    ) : (
+                      // Show filtered documents list when document-level filters are active
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="p-6 border-b border-gray-200">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h2 className="text-xl font-bold text-gray-900">
+                                {filters.status === 'archived' ? 'Archived Documents' :
+                                  filters.year ? `Documents from ${filters.year}` : 'Filtered Documents'}
+                              </h2>
+                              <p className="text-sm text-gray-600 font-normal mt-1">
+                                {loading ? 'Loading...' : `${documents.length} document${documents.length !== 1 ? 's' : ''}`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="divide-y divide-gray-100">
+                          {loading ? (
+                            <div className="p-8 text-center text-gray-500">
+                              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-600 mx-auto mb-4"></div>
+                              <p className="text-sm font-normal text-gray-600">Loading archived documents...</p>
+                            </div>
+                          ) : sortedDocuments.length > 0 ? (
+                            documentViewMode === 'list' ? (
+                              sortedDocuments.map((document) => (
+                                <DocumentListItem
+                                  key={document.doc_id}
+                                  document={document}
+                                  onDocumentUpdated={async () => {
+                                    await loadDocuments();
+                                  }}
+                                />
+                              ))
+                            ) : (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4">
+                                {sortedDocuments.map((document) => (
+                                  <DocumentGridItem
+                                    key={document.doc_id}
+                                    document={document}
+                                    onDocumentUpdated={async () => {
+                                      await loadDocuments();
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )
+                          ) : (
+
+                            <div className="p-12 text-center">
+                              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                {filters.status === 'archived' ? (
+                                  <Archive className="w-8 h-8 text-gray-400" />
+                                ) : (
+                                  <FileText className="w-8 h-8 text-gray-400" />
+                                )}
+                              </div>
+                              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                {filters.status === 'archived' ? 'No Archived Documents' :
+                                  filters.year ? `No Documents from ${filters.year}` : 'No Documents Found'}
+                              </h3>
+                              <p className="text-gray-600 font-normal">
+                                {filters.status === 'archived' ? 'There are no archived documents at this time.' :
+                                  filters.year ? `There are no documents created in ${filters.year}.` : 'No documents match your filter criteria.'}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Unified File Manager View - Folders and Documents - Clean White */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="p-6 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="text-xl font-bold text-gray-900">
+                              {currentFolder?.folder_name || 'All Documents'}
+                            </h2>
+                            <p className="text-sm text-gray-600 font-normal mt-1">
+                              {loading ? 'Loading...' : `${subfolders.length} folder${subfolders.length !== 1 ? 's' : ''}, ${getDocumentCountText()}`}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="divide-y divide-gray-100">
+                        {isTransitioning ? (
+                          <div className="p-8 text-center text-gray-500">
+                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mx-auto mb-4"></div>
+                            <p className="text-sm font-normal text-gray-600">Loading...</p>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Subfolders */}
+                            {sortedSubfolders.map((folder) => (
+
+                              <div
+                                key={`folder-${folder.folder_id}`}
+                                className="p-4 hover:bg-gray-50 transition-all duration-200 cursor-pointer flex items-center gap-4 group"
+                                onClick={() => handleFolderClick(folder)}
+                              >
+                                <div className="flex-shrink-0">
+                                  <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-all">
+                                    <FolderIcon className="w-6 h-6 text-blue-600" />
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="font-semibold text-gray-900 truncate group-hover:text-green-600 transition-colors">
+                                    {folder.folder_name}
+                                  </h3>
+                                  <p className="text-sm text-gray-600 truncate font-normal">
+                                    {folder.folder_path}
+                                  </p>
+                                </div>
+                                <div className="flex-shrink-0 text-sm text-gray-500 font-normal">
+                                  {getFolderDocumentCount(folder.folder_id)} items
+                                </div>
+                              </div>
+                            ))}
+
+                            {/* Documents */}
+                            {loading && documents.length === 0 ? (
+                              <div className="p-4 text-center text-gray-500 text-sm font-normal">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto mb-2"></div>
+                                <span className="text-gray-600">Loading documents...</span>
+                              </div>
+                            ) : (
+                              documentViewMode === 'list' ? (
+                                sortedDocuments.map((document) => (
+                                  <DocumentListItem
+                                    key={`doc-${document.doc_id}`}
+                                    document={document}
+                                    folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
+                                    onDocumentUpdated={async () => {
+                                      await loadDocuments();
+                                      await refreshCounts();
+                                    }}
+                                  />
+                                ))
+                              ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                  {sortedDocuments.map((document) => (
+                                    <DocumentGridItem
+                                      key={`doc-${document.doc_id}`}
+                                      document={document}
+                                      folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
+                                      onDocumentUpdated={async () => {
+                                        await loadDocuments();
+                                        await refreshCounts();
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              )
+                            )}
+
+                            {/* Empty State - Only show when truly empty */}
+                            {!loading && subfolders.length === 0 && documents.length === 0 && (
+                              renderEmptyDocumentState()
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Filter Modal */}
-      <FilterModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        onApplyFilters={handleApplyFilters}
-        currentFilters={filters}
-        folders={folders}
-      />
+          {/* Upload Modal */}
+          {isUploadModalOpen && createPortal(
+            <div
+              className="fixed inset-0 flex items-center justify-center z-[9999] bg-black/30 backdrop-blur-sm"
+              style={{ margin: 0, padding: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="bg-white rounded-xl shadow-sm border border-gray-200 w-full max-w-2xl mx-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Upload Documents</h3>
+                  <button
+                    onClick={() => setIsUploadModalOpen(false)}
+                    className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-1 rounded-lg transition-all text-xl"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Modal Content */}
+                <div className="p-6">
+                  <MultiFileUploadUI
+                    maxFileSize={50 * 1024 * 1024} // 50MB limit
+                    acceptedFileTypes=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                    minFiles={1} // Allow 1+ files
+                    onUploadSuccess={() => {
+                      // Modal closes and navigation to AI processing happens automatically in the hook
+                      setIsUploadModalOpen(false);
+                    }}
+                    onUploadError={(error) => {
+                      console.error('Upload error:', error);
+                      // Keep modal open to show error and allow retry
+                    }}
+                  />
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+
+          {/* Filter Modal */}
+          <FilterModal
+            isOpen={isFilterModalOpen}
+            onClose={() => setIsFilterModalOpen(false)}
+            onApplyFilters={handleApplyFilters}
+            currentFilters={filters}
+            folders={folders}
+          />
+
+          {/* Scan Document Modal */}
+          <ScanDocumentModal
+            isOpen={isScanModalOpen}
+            onClose={() => setIsScanModalOpen(false)}
+          />
+        </div>
+      </div>
     </div>
   );
 };

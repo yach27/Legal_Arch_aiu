@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'; 
+import React, { useState, useEffect } from 'react';
+import AdminLayout from "../../../../Layouts/AdminLayout";
 
 import { Header } from './components/layout/Header';
 import { ChatInterface } from './components/chat/ChatInterface';
@@ -154,13 +155,31 @@ function Aiassistant() {
   const handleDeleteSession = async (sessionId: string) => {
     try {
       await apiService.deleteSession(sessionId);
-      
+
       if (selectedSessionId === sessionId) {
         handleNewChat();
       }
       refetchSessions();
     } catch (error) {
       console.error('Failed to delete session:', error);
+    }
+  };
+
+  const handleStarSession = async (sessionId: string) => {
+    try {
+      await apiService.starSession(sessionId);
+      refetchSessions();
+    } catch (error) {
+      console.error('Failed to star session:', error);
+    }
+  };
+
+  const handleUnstarSession = async (sessionId: string) => {
+    try {
+      await apiService.unstarSession(sessionId);
+      refetchSessions();
+    } catch (error) {
+      console.error('Failed to unstar session:', error);
     }
   };
 
@@ -200,8 +219,8 @@ function Aiassistant() {
   const currentSession = chatSessions?.find(s => s.id === selectedSessionId);
 
   return (
-    <div className="h-screen bg-gray-50 overflow-hidden">
-      <div className="h-full flex bg-gray-100">
+    <div className="h-screen overflow-hidden bg-gray-50">
+      <div className="h-full flex">
         {/* Sidebar */}
         <div className="flex-shrink-0">
           <Sidebar
@@ -210,8 +229,8 @@ function Aiassistant() {
             onSelectSession={handleSelectSession}
             onNewChat={handleNewChat}
             onDeleteSession={handleDeleteSession}
-            onUnstarSession={() => {}}
-            onStarSession={() => {}}
+            onUnstarSession={handleUnstarSession}
+            onStarSession={handleStarSession}
             onBack={() => window.history.back()}
             onCollapse={setIsSidebarCollapsed}
             onExpand={() => setIsSidebarCollapsed(false)}
@@ -269,5 +288,10 @@ function Aiassistant() {
     </div>
   );
 }
+
+// Apply Admin Layout wrapper with fullScreen and hideSidebar props
+Aiassistant.layout = (page: React.ReactNode) => (
+  <AdminLayout fullScreen hideSidebar>{page}</AdminLayout>
+);
 
 export default Aiassistant;

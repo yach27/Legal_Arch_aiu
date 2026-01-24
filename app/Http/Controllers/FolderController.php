@@ -4,23 +4,36 @@ use App\Models\Folder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class FolderController extends Controller
 {
+    private const BASE_PATH = 'd:/legal_office';
+    private const DEFAULT_RELATIONS = ['children', 'creator'];
+
+    /**
+     * Get all folders (optimized - no relations for faster loading)
+     */
     public function index()
     {
-        return response()->json(Folder::with(['children', 'creator'])->get());
+        return response()->json(
+            Folder::with('creator')
+                ->select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'parent_folder_id', 'created_by', 'created_at', 'updated_at')
+                ->orderBy('updated_at', 'desc')
+                ->get()
+        );
     }
 
+    /**
+     * Create a new folder (supports subfolders via parent_folder_id)
+     */
     public function store(Request $request)
     {
-        // Add debug logging
         Log::info('Folder creation attempt', [
-            'user' => $request->user() ? $request->user()->getKey() : null,
+            'user' => $request->user()?->getKey(),
             'request_data' => $request->all()
         ]);
 
-        // validate request
         $validated = $request->validate([
             'folder_name' => 'required|string|max:255',
             'folder_path' => 'required|string',
@@ -28,24 +41,16 @@ class FolderController extends Controller
             'parent_folder_id' => 'nullable|integer|exists:folders,folder_id',
         ]);
 
-        // define base path
-        $basePath = 'd:/legal_office';
-
-        // if it has a parent folder, nest it
-        if (!empty($validated['parent_folder_id'])) {
-            $parent = Folder::find($validated['parent_folder_id']);
-            $path = $parent->folder_path . '/' . $validated['folder_name'];
-        } else {
-            $path = $basePath . '/' . $validated['folder_name'];
-        }
+        $path = $this->buildFolderPath($validated['parent_folder_id'], $validated['folder_name']);
 
         try {
-            // Create the physical directory
+            DB::beginTransaction();
+
+            // Create physical directory
             if (!File::exists($path)) {
                 File::makeDirectory($path, 0755, true);
             }
 
-            // create folder record
             $folder = Folder::create([
                 'folder_name'       => $validated['folder_name'],
                 'folder_path'       => $path,
@@ -54,17 +59,21 @@ class FolderController extends Controller
                 'created_by'        => $request->user()->getKey(),
             ]);
 
+            DB::commit();
+
             Log::info('Folder created successfully', ['folder_id' => $folder->getKey()]);
 
             return response()->json([
                 'message' => 'Folder created successfully',
-                'folder'  => $folder
+                'folder'  => $folder->load(self::DEFAULT_RELATIONS)
             ], 201);
 
         } catch (\Exception $e) {
+            DB::rollBack();
+
             Log::error('Folder creation failed', [
                 'error' => $e->getMessage(),
-                'user_id' => $request->user() ? $request->user()->getKey() : null
+                'user_id' => $request->user()?->getKey()
             ]);
 
             return response()->json([
@@ -74,62 +83,147 @@ class FolderController extends Controller
         }
     }
 
-    // Add search endpoint
-public function search(Request $request, $term)
-{
-    $folders = Folder::where('folder_name', 'LIKE', "%{$term}%")
-                    ->orWhere('folder_path', 'LIKE', "%{$term}%")
-                    ->with(['children', 'creator'])
-                    ->get();
+    /**
+     * Search folders by name or path (optimized)
+     */
+    public function search(Request $request, $term)
+    {
+        $folders = Folder::with('creator')
+            ->select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'parent_folder_id', 'created_by', 'created_at', 'updated_at')
+            ->where('folder_name', 'LIKE', "%{$term}%")
+            ->orWhere('folder_path', 'LIKE', "%{$term}%")
+            ->orderBy('updated_at', 'desc')
+            ->get();
 
-    return response()->json($folders);
-}
+        return response()->json($folders);
+    }
 
-// Add recent folders endpoint
-public function recent($limit = 5)
-{
-    $folders = Folder::orderBy('updated_at', 'desc')
-                    ->take($limit)
-                    ->with(['children', 'creator'])
-                    ->get();
+    /**
+     * Get recent folders
+     */
+    public function recent($limit = 5)
+    {
+        $folders = Folder::orderBy('updated_at', 'desc')
+            ->take($limit)
+            ->with(self::DEFAULT_RELATIONS)
+            ->get();
 
-    return response()->json($folders);
-}
+        return response()->json($folders);
+    }
 
+    /**
+     * Get single folder with relations
+     */
     public function show($id)
     {
-        $folder = Folder::with(['children', 'creator'])->findOrFail($id);
+        $folder = Folder::with(self::DEFAULT_RELATIONS)->findOrFail($id);
         return response()->json($folder);
     }
 
+    /**
+     * Update folder
+     */
     public function update(Request $request, $id)
     {
-        $folder = Folder::findOrFail($id);  
-        $folder->update($request->all());
-        return response()->json($folder);
+        $folder = Folder::findOrFail($id);
+
+        $validated = $request->validate([
+            'folder_name' => 'sometimes|string|max:255',
+            'folder_type' => 'sometimes|string',
+        ]);
+
+        $folder->update($validated);
+
+        return response()->json($folder->load(self::DEFAULT_RELATIONS));
     }
 
+    /**
+     * Delete folder and its physical directory
+     */
     public function destroy($id)
     {
         $folder = Folder::findOrFail($id);
 
-        // Also delete the physical folder if it exists
-        if (File::exists($folder->folder_path)) {
-            File::deleteDirectory($folder->folder_path);
+        try {
+            DB::beginTransaction();
+
+            // Delete physical folder if exists
+            if (File::exists($folder->folder_path)) {
+                File::deleteDirectory($folder->folder_path);
+            }
+
+            $folder->delete();
+
+            DB::commit();
+
+            Log::info('Folder deleted successfully', ['folder_id' => $id]);
+
+            return response()->json(['message' => 'Folder deleted successfully'], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Folder deletion failed', [
+                'error' => $e->getMessage(),
+                'folder_id' => $id
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to delete folder',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $folder->delete();
-
-        return response()->json(null, 204);
     }
-    
-    // Add tree structure endpoint for hierarchical folder display
+
+    /**
+     * Get folder tree structure (hierarchical display with subfolders)
+     */
     public function tree()
     {
-        $folders = Folder::with(['children.children'])
-                         ->whereNull('parent_folder_id') // Only root folders
-                         ->get();
+        $folders = Folder::with(['children.children', 'creator'])
+            ->whereNull('parent_folder_id')
+            ->orderBy('folder_name')
+            ->get();
 
         return response()->json($folders);
+    }
+
+    /**
+     * Get subfolders of a specific folder (optimized)
+     */
+    public function getSubfolders($parentId)
+    {
+        Log::info("Getting subfolders for parent_id: {$parentId}");
+
+        $subfolders = Folder::with('creator')
+            ->select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'parent_folder_id', 'created_by', 'created_at', 'updated_at')
+            ->where('parent_folder_id', $parentId)
+            ->orderBy('folder_name')
+            ->get();
+
+        // Extra safety: filter out the parent folder itself in case of corrupted data
+        $filteredSubfolders = $subfolders->filter(function ($folder) use ($parentId) {
+            return $folder->folder_id != $parentId;
+        })->values();
+
+        Log::info("Found {$filteredSubfolders->count()} subfolders (after filtering)", [
+            'parent_id' => $parentId,
+            'folder_ids' => $filteredSubfolders->pluck('folder_id')->toArray()
+        ]);
+
+        return response()->json($filteredSubfolders);
+    }
+
+    /**
+     * Build folder path based on parent folder
+     */
+    private function buildFolderPath(?int $parentFolderId, string $folderName): string
+    {
+        if ($parentFolderId) {
+            $parent = Folder::findOrFail($parentFolderId);
+            return $parent->folder_path . '/' . $folderName;
+        }
+
+        return self::BASE_PATH . '/' . $folderName;
     }
 }

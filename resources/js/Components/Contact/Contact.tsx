@@ -48,7 +48,7 @@ const Contact: React.FC = () => {
     return (
         <section
             id="contact"
-            className="w-full py-20 bg-gradient-to-b from-white to-green-50/30 border-b border-green-100"
+            className="w-full py-20 px-6 lg:px-10"
         >
             <div className="flex justify-center items-center text-center">
                 <Title title="CONTACT" des="Contact With Us" />
@@ -56,7 +56,7 @@ const Contact: React.FC = () => {
             <div className="w-full mt-10">
                 <div className="w-full flex flex-col lgl:flex-row justify-between gap-6">
                     <ContactLeft />
-                    <div className="w-full lgl:w-[60%] h-full p-4 lgl:p-8 bg-white rounded-2xl shadow-xl border border-green-100">
+                    <div className="w-full lgl:w-[60%] h-full p-4 lgl:p-8 bg-white/40 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30">
                         <form className="w-full flex flex-col gap-6">
                             {(errMsg || successMsg) && (
                                 <p
@@ -82,7 +82,7 @@ const Contact: React.FC = () => {
                                             e: ChangeEvent<HTMLInputElement>,
                                         ) => setUsername(e.target.value)}
                                         value={username}
-                                        className={`contactInput bg-white border-2 border-green-200 rounded-lg p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg ===
+                                        className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg ===
                                             "Username is required!" &&
                                             "border-red-500"
                                             }`}
@@ -98,7 +98,7 @@ const Contact: React.FC = () => {
                                             e: ChangeEvent<HTMLInputElement>,
                                         ) => setPhoneNumber(e.target.value)}
                                         value={phoneNumber}
-                                        className={`contactInput bg-white border-2 border-green-200 rounded-lg p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg ===
+                                        className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg ===
                                             "Phone number is required!" &&
                                             "border-red-500"
                                             }`}
@@ -116,7 +116,7 @@ const Contact: React.FC = () => {
                                         e: ChangeEvent<HTMLInputElement>,
                                     ) => setEmail(e.target.value)}
                                     value={email}
-                                    className={`contactInput bg-white border-2 border-green-200 rounded-lg p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Please give your Email!" &&
+                                    className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Please give your Email!" &&
                                         "border-red-500"
                                         }`}
                                     type="email"
@@ -132,7 +132,7 @@ const Contact: React.FC = () => {
                                         e: ChangeEvent<HTMLInputElement>,
                                     ) => setSubject(e.target.value)}
                                     value={subject}
-                                    className={`contactInput bg-white border-2 border-green-200 rounded-lg p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Plese give your Subject!" &&
+                                    className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Plese give your Subject!" &&
                                         "border-red-500"
                                         }`}
                                     type="text"
@@ -148,7 +148,7 @@ const Contact: React.FC = () => {
                                         e: ChangeEvent<HTMLTextAreaElement>,
                                     ) => setMessage(e.target.value)}
                                     value={message}
-                                    className={`contactTextArea bg-white border-2 border-green-200 rounded-lg p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Message is required!" &&
+                                    className={`contactTextArea bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Message is required!" &&
                                         "border-red-500"
                                         }`}
                                     rows={6}
@@ -158,7 +158,7 @@ const Contact: React.FC = () => {
                             <div className="w-full">
                                 <button
                                     onClick={handleSend}
-                                    className="w-full h-14 bg-gradient-to-r from-green-700 to-green-800 text-white rounded-xl text-base font-bold tracking-wide hover:from-green-800 hover:to-green-900 hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300"
+                                    className="w-full h-14 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl text-base font-bold tracking-wide hover:from-green-600 hover:to-emerald-700 hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 shadow-lg"
                                 >
                                     Send Message
                                 </button>

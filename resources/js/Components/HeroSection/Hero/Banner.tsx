@@ -10,7 +10,7 @@ const Banner: React.FC<BannerProps> = ({ onLoginClick }) => {
     return (
         <section
             id="home"
-            className="w-full pt-20 pb-24 flex flex-col gap-10 xl:gap-0 lg:flex-row items-center border-b border-green-100 min-h-[600px] bg-gradient-to-br from-white via-green-50/20 to-white"
+            className="w-full pt-20 pb-24 flex flex-col gap-10 xl:gap-0 lg:flex-row items-center min-h-[600px] px-6 lg:px-12"
         >
             <LeftBanner onLoginClick={onLoginClick} /> {/* 👈 THIS is key */}
             <RightBanner />

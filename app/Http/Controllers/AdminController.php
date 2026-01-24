@@ -21,6 +21,14 @@ class AdminController extends Controller
         // Get document statistics - count active documents
         $totalDocuments = Document::where('status', 'active')->count();
 
+        // Get active users (users with activity in last 24 hours)
+        $activeUsers = \App\Models\ActivityLog::where('activity_time', '>=', now()->subDay())
+            ->distinct('user_id')
+            ->count('user_id');
+
+        // Get total users
+        $totalUsers = \App\Models\User::count();
+
         // Get monthly upload statistics (last 12 months)
         $monthlyUploads = $this->getMonthlyUploadData();
 
@@ -62,6 +70,30 @@ class AdminController extends Controller
                 ];
             });
 
+        // Get recent activities (from last 24 hours)
+        $activities = \App\Models\ActivityLog::with(['document', 'user'])
+            ->where('activity_time', '>=', now()->subDay())
+            ->orderBy('activity_time', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($log) {
+                $activityTime = \Carbon\Carbon::parse($log->activity_time);
+                
+                // For login/logout activities, document is empty
+                if (in_array($log->activity_type, ['login', 'logout'])) {
+                    $documentTitle = '';
+                } else {
+                    $documentTitle = $log->document ? $log->document->title : 'Unknown Document';
+                }
+                
+                return [
+                    'action' => ucfirst(str_replace('_', ' ', $log->activity_type)),
+                    'document' => $documentTitle,
+                    'user' => $log->user ? $log->user->firstname . ' ' . $log->user->lastname : 'Unknown User',
+                    'time' => $activityTime->diffForHumans(),
+                ];
+            });
+
         return Inertia::render('Admin/Dashboard/index', [
             'user' => $user ? [
                 'user_id' => $user->user_id,
@@ -72,11 +104,14 @@ class AdminController extends Controller
             ] : null,
             'stats' => [
                 'totalDocuments' => $totalDocuments,
+                'activeUsers' => $activeUsers,
+                'totalUsers' => $totalUsers,
             ],
             'monthlyUploads' => $monthlyUploads,
             'documentAnalytics' => $documentAnalytics,
             'recentFiles' => $recentFiles,
             'recentDownloads' => $recentDownloads,
+            'activities' => $activities,
         ]);
     }
 

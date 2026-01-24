@@ -5,18 +5,18 @@ import {
     DashboardContext,
     DashboardContextProvider,
 } from "../../resources/js/Context/DashboardContext";
-// import Loading from "../js/Components/Loading";
-
 import { ModalProvider, useModal } from "../js/Components/Modal/ModalContext";
 import Modal from "./ModalLayout";
 
 interface AdminLayoutProps {
     children: ReactNode;
+    fullScreen?: boolean;
+    hideSidebar?: boolean;
+    noPadding?: boolean;
 }
 
-export default function AdminLayout({ children }: AdminLayoutProps) {
+export default function AdminLayout({ children, fullScreen = false, hideSidebar = false, noPadding = false }: AdminLayoutProps) {
     const [isMobile, setIsMobile] = useState(false);
-    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const handleResize = () => {
@@ -26,25 +26,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         handleResize();
         window.addEventListener("resize", handleResize);
 
-        const hasLoaded = sessionStorage.getItem("adminLoaded");
-        if (hasLoaded) {
-            setLoading(false);
-        } else {
-            const timer = setTimeout(() => {
-                setLoading(false);
-                sessionStorage.setItem("adminLoaded", "true");
-            }, 1500);
-
-            return () => clearTimeout(timer);
-        }
-
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
     return (
         <DashboardContextProvider>
             <ModalProvider>
-                <InnerLayout isMobile={isMobile}>{children}</InnerLayout>
+                <InnerLayout isMobile={isMobile} fullScreen={fullScreen} hideSidebar={hideSidebar} noPadding={noPadding}>{children}</InnerLayout>
             </ModalProvider>
         </DashboardContextProvider>
     );
@@ -53,9 +41,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 function InnerLayout({
     isMobile,
     children,
+    fullScreen = false,
+    hideSidebar = false,
+    noPadding = false,
 }: {
     isMobile: boolean;
     children: ReactNode;
+    fullScreen?: boolean;
+    hideSidebar?: boolean;
+    noPadding?: boolean;
 }) {
     const context = useContext(DashboardContext);
     const { isFilterOpen, closeFilter } = useModal();
@@ -65,9 +59,15 @@ function InnerLayout({
     const { showMobileSidebar, toggleMobileSidebar } = context;
 
     return (
-        <div className="flex h-screen overflow-hidden relative">
+        <div className="flex h-screen overflow-hidden relative bg-gradient-to-br from-gray-50 via-gray-50 to-gray-100/50">
+            {/* Animated background pattern */}
+            <div className="absolute inset-0 opacity-[0.02] pointer-events-none z-0">
+                <div className="absolute top-0 left-1/4 w-96 h-96 bg-green-500 rounded-full blur-3xl animate-pulse"></div>
+                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-yellow-400 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+            </div>
+
             {/* Sidebar */}
-            {isMobile ? (
+            {!hideSidebar && (isMobile ? (
                 showMobileSidebar && (
                     <>
                         <div
@@ -83,12 +83,12 @@ function InnerLayout({
                 <div className="h-full z-10">
                     <Sidebar />
                 </div>
-            )}
+            ))}
 
             {/* Main content */}
-            <div className="flex flex-col flex-1 w-full h-full overflow-auto z-0">
-                <Navbar />
-                <main className="p-6 flex-1 overflow-auto bg-gray-50 shadow-xl">
+            <div className={`flex flex-col flex-1 w-full h-full z-0 overflow-hidden`}>
+                {!fullScreen && <Navbar />}
+                <main className={`flex-1 ${fullScreen ? 'overflow-hidden p-0' : noPadding ? 'overflow-hidden p-0' : 'overflow-auto p-6'}`}>
                     {children}
                 </main>
             </div>

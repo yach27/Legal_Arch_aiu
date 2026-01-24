@@ -80,12 +80,15 @@ class LoginController extends Controller
                 'activity_details' => 'User logged in',
             ]);
 
+            // Redirect based on user role
+            $redirect = $user->role === 'admin' ? '/admin/dashboard' : '/staff/dashboard';
+
             return response()->json([
                 'message' => 'Login successful',
                 'access_token' => $token,
                 'token_type' => 'Bearer',
                 'user' => $user,
-                'redirect' => '/admin/dashboard'
+                'redirect' => $redirect
             ]);
 
         } catch (\Exception $e) {

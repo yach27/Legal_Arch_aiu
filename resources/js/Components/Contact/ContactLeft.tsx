@@ -4,7 +4,7 @@ import contactImg from "../../../images/contact/legal.png";
 
 const ContactLeft: React.FC = () => {
     return (
-        <div className="w-full lgl:w-[35%] h-full bg-white p-4 lgl:p-8 rounded-lg shadow-lg flex flex-col gap-8 justify-center border border-gray-200">
+        <div className="w-full lgl:w-[35%] h-full bg-white/40 backdrop-blur-xl p-4 lgl:p-8 rounded-3xl shadow-xl flex flex-col gap-8 justify-center border border-white/30">
             <img
                 className="w-full h-full object-cover rounded-lg mb-2"
                 src={contactImg}

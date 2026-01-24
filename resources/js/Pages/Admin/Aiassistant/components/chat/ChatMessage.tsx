@@ -11,28 +11,36 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div
-        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-          isUser
-            ? 'bg-green-700 text-white'
-            : 'bg-gray-200 text-gray-800'
-        }`}
-      >
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+      <div className="max-w-xs lg:max-w-md">
+        {/* Message bubble - Staff theme colors */}
+        <div
+          className={`rounded-2xl px-5 py-3 shadow-sm ${isUser
+              ? 'bg-gradient-to-br from-[#228B22] to-[#1a6b1a] text-white'
+              : 'bg-white border border-gray-200 text-gray-900'
+            }`}
+        >
 
-        {/* Display document references if available */}
-        {message.documents && message.documents.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-300 space-y-2">
-            <p className="text-xs font-semibold text-gray-600 mb-2">Referenced Documents:</p>
-            {message.documents.map((doc) => (
-              <FileLink key={doc.doc_id} document={doc} />
-            ))}
-          </div>
-        )}
+          <p className="text-base whitespace-pre-wrap leading-relaxed">{message.content}</p>
 
-        <p className={`text-xs mt-1 ${isUser ? 'text-green-200' : 'text-gray-500'}`}>
-          {new Date(message.timestamp).toLocaleTimeString()}
-        </p>
+          {/* Display document references if available */}
+          {message.documents && message.documents.length > 0 && (
+            <div className={`mt-3 pt-3 space-y-2 ${isUser ? 'border-t border-white/20' : 'border-t border-gray-200'
+              }`}>
+              <p className={`text-xs font-semibold ${isUser ? 'text-white/90' : 'text-gray-700'} mb-2`}>
+                📎 Referenced Documents:
+              </p>
+              {message.documents.map((doc) => (
+                <FileLink key={doc.doc_id} document={doc} />
+              ))}
+            </div>
+          )}
+
+          {/* Timestamp */}
+          <p className={`text-xs mt-2 ${isUser ? 'text-white/80' : 'text-gray-500'
+            }`}>
+            {new Date(message.timestamp).toLocaleTimeString()}
+          </p>
+        </div>
       </div>
     </div>
   );

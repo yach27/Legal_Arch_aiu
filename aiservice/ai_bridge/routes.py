@@ -265,197 +265,83 @@ def register_routes(app):
                     'message': 'Document ID is required'
                 }), 400
             
-            auth_header = request.headers.get('Authorization')
-            headers = {'Authorization': auth_header} if auth_header else {}
+            # Get document text - either from request or fetch from Laravel
+            extracted_text = data.get('documentText', '')
             
-            # Get document info from Laravel
-            doc_response = bridge_service.call_laravel_api(f'/documents/{doc_id}', headers=headers)
-            if not doc_response['success']:
-                return jsonify({
-                    'success': False,
-                    'message': 'Document not found'
-                }), 404
-            
-            document = doc_response['data']
-            
-            # Get text content from existing embeddings using doc_id
-            logger.info(f"Getting embeddings for document ID {doc_id}")
-            embeddings_response = bridge_service.call_laravel_api(f'/document-embeddings/{doc_id}', headers=headers)
-            
-            extracted_text = ""
-            if embeddings_response['success'] and embeddings_response.get('data'):
-                embeddings_data = embeddings_response['data']
-                logger.info(f"Embeddings data type: {type(embeddings_data)}")
-                logger.info(f"Embeddings data keys: {list(embeddings_data.keys()) if isinstance(embeddings_data, dict) else 'Not a dict'}")
+            # Get available folders from request payload (avoids circular callback)
+            folders = data.get('folders', [])
+
+            # Only fetch document info from Laravel if we don't have the text AND it wasn't provided
+            # This logic should be kept minimal to avoid deadlocks
+            if not extracted_text:
+                auth_header = request.headers.get('Authorization')
+                headers = {'Authorization': auth_header} if auth_header else {}
                 
-                # Handle different response formats
-                if isinstance(embeddings_data, dict):
-                    # If it's a dict, convert values to a list or look for the actual embeddings
-                    if 'embeddings' in embeddings_data:
-                        # Laravel might return {'embeddings': [array of embeddings]}
-                        embeddings_list = embeddings_data['embeddings']
+                # Fallback: Get document text from Laravel if not provided
+                logger.info(f"Getting document text for document ID {doc_id}")
+                text_response = bridge_service.call_laravel_api(f'/documents/{doc_id}/text', headers=headers)
+                
+                if text_response['success'] and text_response.get('data'):
+                    response_data = text_response['data']
+                    # Handle nested data structure
+                    if isinstance(response_data, dict) and 'data' in response_data:
+                        extracted_text = response_data['data'].get('text', '')
                     else:
-                        # Or the dict values themselves are the embeddings
-                        embeddings_list = list(embeddings_data.values())
-                elif isinstance(embeddings_data, list):
-                    # If it's already a list, use it directly
-                    embeddings_list = embeddings_data
-                else:
-                    logger.error(f"Unexpected embeddings_data format: {type(embeddings_data)}")
-                    embeddings_list = []
-                
-                logger.info(f"Found {len(embeddings_list)} embeddings for doc_id {doc_id}")
-                
-                # Reconstruct text from embedding chunks ordered by chunk_index
-                chunks_by_index = {}
-                for i, embedding in enumerate(embeddings_list):
-                    logger.info(f"Processing embedding {i}: type={type(embedding)}")
-                    
-                    # Handle different data formats
-                    if isinstance(embedding, dict):
-                        chunk_index = embedding.get('chunk_index', 0)
-                        chunk_text = embedding.get('chunk_text', '')
-                    elif isinstance(embedding, str):
-                        # If it's a string, try to parse as JSON
-                        try:
-                            import json
-                            embedding_dict = json.loads(embedding)
-                            chunk_index = embedding_dict.get('chunk_index', 0)
-                            chunk_text = embedding_dict.get('chunk_text', '')
-                        except:
-                            logger.error(f"Could not parse embedding as JSON: {str(embedding)[:100]}...")
-                            continue
-                    else:
-                        logger.error(f"Unexpected embedding format: {type(embedding)}")
-                        continue
-                        
-                    if chunk_text:
-                        chunks_by_index[chunk_index] = chunk_text
-                
-                # Concatenate chunks in order
-                for index in sorted(chunks_by_index.keys()):
-                    extracted_text += chunks_by_index[index] + " "
-                
-                if extracted_text:
-                    logger.info(f"Successfully reconstructed {len(extracted_text)} characters from embeddings for doc_id {doc_id}")
-                else:
-                    logger.error(f"No text content found in embeddings for doc_id {doc_id}")
-                    return jsonify({
-                        'success': False,
-                        'message': 'No text content found in document embeddings'
-                    }), 400
-            else:
-                logger.error(f"No embeddings found for doc_id {doc_id}")
-                return jsonify({
-                    'success': False,
-                    'message': 'Document embeddings not found. Please process the document first.'
-                }), 400
-            
-            # Get categories and folders from Laravel for AI suggestions (using public endpoints)
-            categories_response = bridge_service.call_laravel_api('/ai/categories/public')
-            folders_response = bridge_service.call_laravel_api('/ai/folders/public')
-            
-            # Extract data from nested response structure
-            categories = []
-            folders = []
-            
-            if categories_response.get('success') and categories_response.get('data'):
-                laravel_data = categories_response.get('data')
-                if isinstance(laravel_data, dict) and 'data' in laravel_data:
-                    categories = laravel_data['data']
-                elif isinstance(laravel_data, list):
-                    categories = laravel_data
-            
-            if folders_response.get('success') and folders_response.get('data'):
-                laravel_data = folders_response.get('data')
-                if isinstance(laravel_data, dict) and 'data' in laravel_data:
-                    folders = laravel_data['data']
-                elif isinstance(laravel_data, list):
-                    folders = laravel_data
-            
-            # Analyze document content for title, description, remarks
-            logger.info(f"Analyzing content for doc_id {doc_id} - Text length: {len(extracted_text)}")
+                        extracted_text = response_data.get('text', '')
+
+            logger.info(f"Got document text: {len(extracted_text)} characters")
+
+            # If no text available, return error
             if not extracted_text or len(extracted_text.strip()) < 50:
-                logger.error("Insufficient text extracted from embeddings for analysis")
+                logger.error(f"No text content available for doc_id {doc_id}.")
                 return jsonify({
                     'success': False,
-                    'message': 'Insufficient content extracted from document embeddings for analysis.'
+                    'message': 'Document text not available.'
                 }), 400
             
+            # Categories are removed as per requirement, passing empty list
+            categories = []
+
+            # If folders weren't passed (old behavior), try to fetch them (careful of deadlock if single threaded)
+            if not folders:
+                logger.warning("Folders not provided in payload, attempting to fetch (risk of deadlock)")
+                folders_response = bridge_service.call_laravel_api('/ai/folders/public')
+                if folders_response.get('success') and folders_response.get('data'):
+                    laravel_data = folders_response.get('data')
+                    if isinstance(laravel_data, dict) and 'data' in laravel_data:
+                        folders = laravel_data['data']
+                    elif isinstance(laravel_data, list):
+                        folders = laravel_data
+
+            logger.info(f"Analyzing with {len(folders)} folders")
+            
+            # Analyze document content - simple and clean like Groq
             content_analysis = bridge_service.analyze_document_content(extracted_text)
-            
-            # Get AI suggestions for category and folder
+
+            # Get AI suggestions for folder only (categories ignored)
             suggestions = bridge_service.suggest_category_and_folder(extracted_text, categories, folders)
-            
-            # Build comprehensive analysis result
+
+            # Extract folder name from suggestions
+            suggested_folder_name = None
+            if suggestions['suggested_folder']:
+                if isinstance(suggestions['suggested_folder'], dict):
+                    suggested_folder_name = suggestions['suggested_folder'].get('folder_name')
+                else:
+                     suggested_folder_name = suggestions['suggested_folder']
+
+            # Return result (clean format)
             analysis_result = {
-                # AI-generated content fields
-                'suggested_title': content_analysis['suggested_title'],
-                'suggested_description': content_analysis['suggested_description'],
-                'ai_remarks': content_analysis['ai_remarks'],
-                
-                # AI-suggested database selections
-                'suggested_category': suggestions['suggested_category'],
-                'suggested_folder': suggestions['suggested_folder'],
-                
-                # Confidence scores
-                'category_confidence': suggestions['category_confidence'],
-                'folder_confidence': suggestions['folder_confidence'],
-                
-                # Analysis metadata
-                'analysis_summary': content_analysis['suggested_description'][:200] + "...",
-                'word_count': len(extracted_text.split()),
-                'character_count': len(extracted_text),
-                
-                # Processing details
-                'processing_details': {
-                    'text_extracted': True,
-                    'categories_available': len(categories),
-                    'folders_available': len(folders),
-                    'model_used': 'legal-bert-base-uncased',
-                    'analysis_time': datetime.now().isoformat()
-                }
-            }
-            
-            # Automatically update the document with AI suggestions (like manual processing)
-            update_data = {
                 'title': content_analysis['suggested_title'],
                 'description': content_analysis['suggested_description'],
                 'remarks': content_analysis['ai_remarks'],
-                'status': 'processed'
+                'suggested_folder': suggested_folder_name,
+                'category': None,
+                'document_type': None,
             }
-            
-            # Add category_id if suggested category exists
-            if suggestions['suggested_category'] and suggestions['category_confidence'] > 0:
-                # suggested_category is the full category object with category_id
-                update_data['category_id'] = suggestions['suggested_category']['category_id']
-            
-            # Add folder_id if suggested folder exists
-            if suggestions['suggested_folder'] and suggestions['folder_confidence'] > 0:
-                # suggested_folder is the full folder object with folder_id
-                update_data['folder_id'] = suggestions['suggested_folder']['folder_id']
-            
-            # Update document in Laravel database
-            update_response = bridge_service.call_laravel_api(
-                f'/documents/{doc_id}/update-metadata',
-                method='PUT',
-                data=update_data,
-                headers=headers
-            )
-            
-            if update_response['success']:
-                logger.info(f"Document {doc_id} automatically updated with AI suggestions")
-                analysis_result['document_updated'] = True
-                analysis_result['updated_fields'] = list(update_data.keys())
-            else:
-                logger.warning(f"Failed to auto-update document {doc_id}: {update_response.get('message', 'Unknown error')}")
-                analysis_result['document_updated'] = False
-                analysis_result['update_error'] = update_response.get('message', 'Unknown error')
-            
-            return jsonify({
-                'success': True,
-                'analysis': analysis_result
-            })
+
+            logger.info(f"AI Bridge analysis completed for doc_id {doc_id}")
+
+            return jsonify(analysis_result)
             
         except Exception as e:
             logger.error(f"Document analysis error: {str(e)}")
@@ -512,13 +398,34 @@ def register_routes(app):
             data = request.get_json()
             query = data.get('query', '')
             limit = data.get('limit', 10)
-            
+            user_id = data.get('user_id')
+
             if not query:
                 return jsonify({
                     'success': False,
                     'message': 'Search query is required'
                 }), 400
-            
+
+            logger.info(f"Semantic search query: '{query}' for user {user_id}")
+
+            # Get authentication header
+            auth_header = request.headers.get('Authorization')
+            headers = {'Authorization': auth_header} if auth_header else {}
+
+            # Get all document embeddings from Laravel
+            embeddings_response = bridge_service.call_laravel_api('/document-embeddings/all', headers=headers)
+
+            if not embeddings_response['success'] or not embeddings_response.get('data'):
+                logger.warning("No embeddings found in database")
+                return jsonify({
+                    'success': True,
+                    'query': query,
+                    'results': [],
+                    'total_results': 0,
+                    'search_method': 'semantic_similarity',
+                    'model_used': 'legal-bert-base-uncased'
+                })
+
             # Generate embedding for the query
             embedding_model = get_embedding_model()
             if not embedding_model:
@@ -526,39 +433,66 @@ def register_routes(app):
                     'success': False,
                     'message': 'Embedding model not loaded'
                 }), 503
-            
+
             query_embedding = embedding_model.encode([query], convert_to_tensor=False)[0]
-            
-            # This would require implementing semantic search across stored embeddings
-            # For now, return mock search results
-            mock_results = [
-                {
-                    'doc_id': 1,
-                    'title': 'IT Services Contract',
-                    'similarity_score': 0.89,
-                    'matched_chunk': 'IT services agreement between parties...',
-                    'chunk_index': 2
-                },
-                {
-                    'doc_id': 2,
-                    'title': 'Software License Agreement',
-                    'similarity_score': 0.76,
-                    'matched_chunk': 'Software licensing terms and conditions...',
-                    'chunk_index': 0
-                }
-            ]
-            
+
+            # Calculate cosine similarity with all document chunks
+            import numpy as np
+            from numpy.linalg import norm
+
+            results = []
+            embeddings_data = embeddings_response['data']
+
+            for embedding_record in embeddings_data:
+                if not isinstance(embedding_record, dict):
+                    continue
+
+                chunk_embedding = embedding_record.get('embedding_vector')
+                if not chunk_embedding:
+                    continue
+
+                # Convert to numpy array if it's a list
+                if isinstance(chunk_embedding, list):
+                    chunk_embedding = np.array(chunk_embedding)
+                elif isinstance(chunk_embedding, str):
+                    # Handle JSON string
+                    import json
+                    chunk_embedding = np.array(json.loads(chunk_embedding))
+
+                # Calculate cosine similarity
+                similarity = np.dot(query_embedding, chunk_embedding) / (norm(query_embedding) * norm(chunk_embedding))
+
+                # Only include results with similarity > 0.3 (threshold)
+                if similarity > 0.3:
+                    results.append({
+                        'doc_id': embedding_record.get('doc_id'),
+                        'title': embedding_record.get('document_title', 'Unknown Document'),
+                        'similarity_score': float(similarity),
+                        'matched_chunk': embedding_record.get('chunk_text', ''),
+                        'chunk_index': embedding_record.get('chunk_index', 0),
+                        'embedding_id': embedding_record.get('embedding_id')
+                    })
+
+            # Sort by similarity score (descending)
+            results.sort(key=lambda x: x['similarity_score'], reverse=True)
+
+            # Limit results
+            results = results[:limit]
+
+            logger.info(f"Semantic search found {len(results)} results for query: '{query}'")
+
             return jsonify({
                 'success': True,
                 'query': query,
-                'results': mock_results[:limit],
-                'total_results': len(mock_results),
+                'results': results,
+                'total_results': len(results),
                 'search_method': 'semantic_similarity',
                 'model_used': 'legal-bert-base-uncased'
             })
-            
+
         except Exception as e:
             logger.error(f"Semantic search error: {str(e)}")
+            logger.error(traceback.format_exc())
             return jsonify({
                 'success': False,
                 'message': f'Semantic search failed: {str(e)}'

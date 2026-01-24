@@ -13,7 +13,7 @@ const About = () => {
     return (
         <section
             id="about"
-            className="w-full py-20 px-6 lg:px-10 bg-gradient-to-b from-white via-green-50/30 to-white border-b-[1px] border-b-green-100"
+            className="w-full py-20 px-6 lg:px-10"
         >
             {/* Office Introduction */}
             <Title
