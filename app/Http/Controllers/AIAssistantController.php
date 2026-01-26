@@ -103,15 +103,58 @@ class AIAssistantController extends Controller
             // Perform semantic search if query contains names or specific search terms
             $semanticResults = $this->performSemanticSearch($request->message, $userId);
 
-            // Retrieve document context if document IDs are provided
+            // Collect all relevant document IDs
+            $allDocumentIds = $request->document_ids ?? [];
+            
+            // Add IDs from search results
+            if (!empty($searchResults['documents'])) {
+                foreach ($searchResults['documents'] as $doc) {
+                    $allDocumentIds[] = $doc['doc_id'];
+                }
+            }
+            if (!empty($metadataResults['documents'])) {
+                foreach ($metadataResults['documents'] as $doc) {
+                    $allDocumentIds[] = $doc['doc_id'];
+                }
+            }
+
+            // NEW: Carry over documents from the previous message in this conversation
+            // This allows the user to say "compare it" referring to documents found in the previous turn
+            if ($conversationId) {
+                $lastHistory = AIHistory::where('conversation_id', $conversationId)
+                    ->where('user_id', $userId)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                if ($lastHistory && $lastHistory->document_references) {
+                    $prevDocs = json_decode($lastHistory->document_references, true);
+                    if (is_array($prevDocs)) {
+                        foreach ($prevDocs as $prevDoc) {
+                            if (isset($prevDoc['doc_id'])) {
+                                $allDocumentIds[] = $prevDoc['doc_id'];
+                            }
+                        }
+                    }
+                }
+            }
+
+            $allDocumentIds = array_unique($allDocumentIds);
+
+            // Retrieve document context if we have any relevant documents
             // Use higher limits for Groq API
             $documentContext = '';
             $useGroqLimits = $this->aiServiceType === 'groq';
-            if ($request->document_ids && count($request->document_ids) > 0) {
-                $documentContext = $this->retrieveDocumentContext($request->document_ids, $userId, $useGroqLimits);
+            
+            if (count($allDocumentIds) > 0) {
+                Log::info('Retrieving context for documents', [
+                    'count' => count($allDocumentIds),
+                    'ids' => array_values($allDocumentIds)
+                ]);
+                
+                $documentContext = $this->retrieveDocumentContext($allDocumentIds, $userId, $useGroqLimits);
 
                 Log::info('Document context retrieved', [
-                    'document_count' => count($request->document_ids),
+                    'document_count' => count($allDocumentIds),
                     'context_length' => strlen($documentContext),
                     'using_groq_limits' => $useGroqLimits
                 ]);
@@ -603,8 +646,8 @@ class AIAssistantController extends Controller
             Log::info('Document location query detected', ['message' => $message]);
 
             // Extract potential document title from the message
-            // Look for quoted text or capitalized phrases
-            $titlePattern = '/"([^"]+)"|\'([^\']+)\'|([A-Z][A-Za-z\s]+(?:Guide|Manual|Policy|Procedures|Document|File|Report))/';
+            // Look for quoted text or capitalized phrases (relaxed for case-insensitivity)
+            $titlePattern = '/"([^"]+)"|\'([^\']+)\'|([a-zA-Z][a-zA-Z\s]+(?:Guide|Manual|Policy|Procedures|Document|File|Report))/i';
             preg_match_all($titlePattern, $message, $matches);
 
             $searchTerms = array_filter(array_merge(
@@ -617,7 +660,7 @@ class AIAssistantController extends Controller
                 // If no specific title found, extract keywords from the message
                 $words = explode(' ', $message);
                 $searchTerms = array_filter($words, function($word) {
-                    return strlen($word) > 3 && !in_array(strtolower($word), ['where', 'location', 'find', 'document', 'file', 'give', 'show', 'tell', 'link', 'this', 'that', 'here', 'there']);
+                    return strlen($word) >= 3 && !in_array(strtolower($word), ['where', 'location', 'find', 'document', 'file', 'give', 'show', 'tell', 'link', 'this', 'that', 'here', 'there']);
                 });
             }
 
@@ -629,8 +672,8 @@ class AIAssistantController extends Controller
                 // Search with specific terms
                 foreach ($searchTerms as $term) {
                     $query->where(function($q) use ($term) {
-                        $q->where('title', 'LIKE', "%{$term}%")
-                          ->orWhere('description', 'LIKE', "%{$term}%");
+                        $q->where('title', 'ILIKE', "%{$term}%")
+                          ->orWhere('description', 'ILIKE', "%{$term}%");
                     });
                 }
                 $documents = $query->limit(5)->get();
@@ -923,9 +966,9 @@ class AIAssistantController extends Controller
             
             $searchTerms = array_filter($words, function($word) use ($stopWords) {
                 $wordLower = strtolower($word);
-                // Keep if: length > 2 AND (not a stop word OR starts with capital letter - likely a name)
+                // Keep if: length >= 3 AND (not a stop word OR starts with capital letter - likely a name)
                 $isProperName = ctype_upper($word[0] ?? '');
-                return strlen($word) > 2 && (!in_array($wordLower, $stopWords) || $isProperName);
+                return strlen($word) >= 3 && (!in_array($wordLower, $stopWords) || $isProperName);
             });
 
             if (empty($searchTerms)) {
@@ -944,8 +987,8 @@ class AIAssistantController extends Controller
             // Add OR conditions for each search term
             $query->where(function($q) use ($searchTerms) {
                 foreach ($searchTerms as $term) {
-                    $q->orWhere('title', 'LIKE', "%{$term}%")
-                      ->orWhere('description', 'LIKE', "%{$term}%");
+                    $q->orWhere('title', 'ILIKE', "%{$term}%")
+                      ->orWhere('description', 'ILIKE', "%{$term}%");
                 }
             });
 
@@ -1006,8 +1049,8 @@ class AIAssistantController extends Controller
         $hasContentQuery = preg_match('/(does|has|find|search|look for|check if|tell me if|show me).*(have|has|contain|include|mention)/i', $message) ||
                           preg_match('/\b(affidavit|certificate|resolution|contract|agreement|document|file)\b/i', $message);
 
-        // Trigger on names (potential person/org search)
-        $hasNames = preg_match('/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/', $message);
+        // Trigger on names (potential person/org search) - Relaxed capital letter requirement
+        $hasNames = preg_match('/\b[a-zA-Z][a-z]+\s+[a-zA-Z][a-z]+\b/', $message);
 
         // Trigger on search keywords
         $hasSearchKeywords = preg_match('/\b(find|search|locate|where|which|show|list)\b/i', $message);

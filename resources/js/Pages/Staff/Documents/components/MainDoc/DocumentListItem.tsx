@@ -155,8 +155,17 @@ const DocumentListItem: React.FC<DocumentListItemProps> = ({
   };
 
   const getFileIcon = (): React.ReactNode => {
-    // You can extend this to show different icons based on file type
-    return <FileText className="w-5 h-5 text-green-600" />;
+    return (
+      <div className="relative flex items-center justify-center">
+        <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M7 3C5.34315 3 4 4.34315 4 6V18C4 19.6569 5.34315 21 7 21H17C18.6569 21 20 19.6569 20 18V9.82843C20 9.29799 19.7893 8.78929 19.4142 8.41421L14.5858 3.58579C14.2107 3.21071 13.702 3 13.1716 3H7Z" fillOpacity="0.1" />
+          <path d="M14 3V8C14 8.55228 14.4477 9 15 9H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M14.5858 3.58579L19.4142 8.41421C19.7893 8.78929 20 9.29799 20 9.82843V18C20 19.6569 18.6569 21 17 21H7C5.34315 21 4 19.6569 4 18V6C4 4.34315 5.34315 3 7 3H13.1716C13.702 3 14.2107 3.21071 14.5858 3.58579Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="7" y="13" width="10" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" />
+          <rect x="7" y="16" width="7" height="1.5" rx="0.5" fill="currentColor" opacity="0.5" />
+        </svg>
+      </div>
+    );
   };
 
   const getFileExtension = (filename: string): string => {
@@ -178,63 +187,53 @@ const DocumentListItem: React.FC<DocumentListItemProps> = ({
   }, [menuOpen]);
 
   return (
-    <div
-      className="flex items-center justify-between p-4 hover:bg-gray-50 transition-all duration-200 cursor-pointer group"
-      onClick={handleDocumentClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleDocumentClick();
-        }
-      }}
-    >
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="p-2 bg-green-50 rounded-lg flex-shrink-0 group-hover:bg-green-100 transition-all">
-          {getFileIcon()}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h4 className="font-semibold text-gray-900 group-hover:text-green-600 transition-colors truncate">
-              {document.title}
-            </h4>
-            <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded font-medium flex-shrink-0">
-              {getFileExtension(document.title)}
-            </span>
+    <>
+      <div
+        className="flex items-center justify-between p-4 hover:bg-gray-50 transition-all duration-200 cursor-pointer group"
+        onClick={handleDocumentClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleDocumentClick();
+          }
+        }}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="p-2 bg-red-50 rounded-lg flex-shrink-0 group-hover:bg-red-100 transition-all">
+            {getFileIcon()}
           </div>
-          <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
-            <span className="truncate font-normal">By {document.created_by}</span>
-            <span className={`px-2 py-1 rounded-full text-xs flex-shrink-0 font-medium ${getStatusBadge(document.status)}`}>
-              {document.status.charAt(0).toUpperCase() + document.status.slice(1)}
-            </span>
-            {document.remarks && (
-              <span className="italic truncate max-w-xs text-gray-500 font-normal" title={document.remarks}>
-                "{document.remarks}"
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="font-semibold text-gray-900 group-hover:text-green-600 transition-colors truncate">
+                {document.title}
+              </h4>
 
-      <div className="flex items-center gap-4 flex-shrink-0">
-        <div className="text-right text-sm text-gray-600">
-          <div title={`Updated: ${document.updated_at}`} className="font-normal">
-            {formatDate(document.updated_at)}
-          </div>
-          <div className="text-xs text-gray-500 font-light">
-            {formatTime(document.updated_at)}
+            </div>
+
           </div>
         </div>
-        <div className="relative">
-          <button
-            className="p-1 rounded-lg hover:bg-gray-100 flex-shrink-0 transition-all"
-            onClick={handleMenuClick}
-            type="button"
-            aria-label={`More options for ${document.title}`}
-          >
-            <MoreVertical className="w-4 h-4 text-gray-700" />
-          </button>
+
+        <div className="flex items-center gap-4 flex-shrink-0">
+          <div className="text-right text-sm text-gray-600">
+            <div title={`Updated: ${document.updated_at}`} className="font-normal">
+              {formatDate(document.updated_at)}
+            </div>
+            <div className="text-xs text-gray-500 font-light">
+              {formatTime(document.updated_at)}
+            </div>
+          </div>
+          <div className="relative">
+            <button
+              className="p-1 rounded-lg hover:bg-gray-100 flex-shrink-0 transition-all"
+              onClick={handleMenuClick}
+              type="button"
+              aria-label={`More options for ${document.title}`}
+            >
+              <MoreVertical className="w-4 h-4 text-gray-700" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -407,7 +406,7 @@ const DocumentListItem: React.FC<DocumentListItemProps> = ({
         </div>,
         window.document.body
       )}
-    </div>
+    </>
   );
 };
 

@@ -61,8 +61,8 @@ interface Folder {
 const AIProcessing: React.FC<AIProcessingProps> = ({
   documentData = null,
   uploadedFile = null,
-  onAccept = () => {},
-  onManualReview = () => {}
+  onAccept = () => { },
+  onManualReview = () => { }
 }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
@@ -645,8 +645,8 @@ const AIProcessing: React.FC<AIProcessingProps> = ({
             {processingStatus === 'completed'
               ? 'AI processing completed • Review AI suggestions before accepting'
               : processingStatus === 'analyzing'
-              ? 'Analyzing document with Legal BERT model...'
-              : 'AI analysis ready • Review suggestions before accepting'
+                ? 'Analyzing document with Legal BERT model...'
+                : 'AI analysis ready • Review suggestions before accepting'
             }
           </p>
         </div>

@@ -21,10 +21,8 @@ class AdminController extends Controller
         // Get document statistics - count active documents
         $totalDocuments = Document::where('status', 'active')->count();
 
-        // Get active users (users with activity in last 24 hours)
-        $activeUsers = \App\Models\ActivityLog::where('activity_time', '>=', now()->subDay())
-            ->distinct('user_id')
-            ->count('user_id');
+        // Get active users (users with active status)
+        $activeUsers = \App\Models\User::where('status', 'active')->count();
 
         // Get total users
         $totalUsers = \App\Models\User::count();

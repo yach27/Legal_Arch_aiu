@@ -21,8 +21,8 @@ interface FormData {
 const ManualProcessing = ({
   documentData = null,
   uploadedFile = null,
-  onSave = (formData: FormData) => {},
-  onCancel = () => {}
+  onSave = (formData: FormData) => { },
+  onCancel = () => { }
 }) => {
   // State for real database data
   const [availableFolders, setAvailableFolders] = useState<Folder[]>([]);
@@ -102,9 +102,47 @@ const ManualProcessing = ({
     }));
   };
 
-  const handleCancel = () => {
-    // Navigate back to document management page
-    router.visit('/admin/documents');
+  const handleCancel = async () => {
+    // Delete the document from database if it exists (same behavior as AIProcessing)
+    if (documentData?.doc_id) {
+      const confirmDelete = window.confirm(
+        'Are you sure you want to cancel? This will delete the uploaded document.'
+      );
+
+      if (!confirmDelete) {
+        return;
+      }
+
+      setSaving(true); // Reuse saving state to show loading/disable buttons
+      try {
+        const response = await axios.delete(`/api/documents/${documentData.doc_id}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        // Show success message
+        const toast = window.document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl z-50';
+        toast.textContent = 'Document deleted successfully';
+        window.document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+
+        // Navigate back after short delay
+        setTimeout(() => {
+          router.visit('/admin/documents');
+        }, 1000);
+
+      } catch (error) {
+        console.error('Failed to delete document:', error);
+        alert('Failed to delete document. Redirecting anyway...');
+        router.visit('/admin/documents');
+      }
+    } else {
+      // No document to delete, just navigate back
+      router.visit('/admin/documents');
+    }
   };
 
   const toggleDropdown = (dropdown) => {
@@ -121,7 +159,7 @@ const ManualProcessing = ({
       location: false
     }));
   };
-  
+
   // Helper function to get selected folder name with path
   const getSelectedFolderName = () => {
     const selectedFolder = availableFolders.find(folder => folder.folder_id === formData.selectedFolderId);
@@ -145,7 +183,7 @@ const ManualProcessing = ({
     }
 
     setSaving(true);
-    
+
     try {
       if (!documentData?.doc_id) {
         alert('Error: No document found. Please upload a file first, then navigate from the AI processing page.');

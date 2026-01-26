@@ -126,12 +126,6 @@ const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
                         <p className="text-white/90 text-sm font-medium">
                             {userData.email}
                         </p>
-                        <div className="mt-3 px-4 py-1.5 bg-white/20 backdrop-blur-md rounded-full">
-                            <span className="text-white text-xs font-semibold flex items-center gap-1.5">
-                                <Shield className="w-3.5 h-3.5" />
-                                User ID: #{userData.user_id}
-                            </span>
-                        </div>
                     </div>
                 </div>
 

@@ -108,6 +108,24 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Auth routes
     Route::post('/logout', [LogoutController::class, 'logout']);
+    
+    // User permission status endpoint (for real-time updates)
+    Route::get('/user/status', function (Request $request) {
+        $user = $request->user();
+        return response()->json([
+            'permissions' => [
+                'can_edit' => $user->can_edit,
+                'can_delete' => $user->can_delete,
+                'can_archive' => $user->can_archive,
+                'can_upload' => $user->can_upload,
+                'can_view' => $user->can_view,
+            ],
+            'unread_notifications' => \App\Models\Notification::where('user_id', $user->user_id)
+                ->where('is_read', false)
+                ->count(),
+        ]);
+    });
+    
     Route::get('/user', function (Request $request) {
         return $request->user();
     });

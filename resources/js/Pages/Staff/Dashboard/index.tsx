@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { usePage, router } from '@inertiajs/react';
 import StaffLayout from "../../../../Layouts/StaffLayout";
 import StaffHeader from "../../../Components/Templates/StaffHeader";
 import RecentFiles from "./components/RecentFiles";
 import RecentDownloads from "./components/RecentDownloads";
 import { FileText, Upload, FolderOpen, Shield, Search, MessageSquare, TrendingUp } from 'lucide-react';
+import { usePermissionPolling } from '../../../hooks/usePermissionPolling';
 
 interface DashboardProps {
     recentFiles: any[];
@@ -27,7 +28,12 @@ export default function StaffDashboard() {
     const recentDownloads = props.recentDownloads || [];
     const myDocumentsCount = props.myDocumentsCount || 0;
     const myUploadsCount = props.myUploadsCount || recentFiles.length;
-    const userPermissions = props.userPermissions || {
+
+    // Use real-time permission polling
+    const { permissions: livePermissions, unreadCount } = usePermissionPolling(true);
+
+    // Use live permissions if available, otherwise fall back to props
+    const userPermissions = livePermissions || props.userPermissions || {
         can_upload: false,
         can_view: true,
         can_delete: false,

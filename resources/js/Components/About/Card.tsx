@@ -1,26 +1,47 @@
+import { motion } from "framer-motion";
 import { HiArrowRight } from "react-icons/hi";
 
 // eslint-disable-next-line react/prop-types
 const Card = ({ title, des, icon }) => {
     return (
-        <div className="w-full px-6 py-10 rounded-3xl bg-white/40 backdrop-blur-xl shadow-xl hover:shadow-2xl hover:scale-[1.05] transition-all duration-300 group border border-white/30 hover:border-green-300/50 hover:bg-white/50">
-            <div className="flex flex-col h-full justify-between gap-6">
-                <div className="w-16 h-16 flex items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 text-white text-3xl shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    {icon}
+        <motion.div
+            whileHover={{
+                y: -10,
+                scale: 1.02,
+                boxShadow: "0 25px 60px -15px rgba(21, 128, 61, 0.15)"
+            }}
+            whileTap={{ scale: 0.98 }}
+            className="w-full px-8 py-12 rounded-[2.5rem] bg-white border border-gray-100 shadow-[0_4px_25px_rgba(0,0,0,0.03)] transition-all duration-300 group cursor-pointer"
+        >
+            <div className="flex flex-col h-full justify-between gap-8">
+                <div className="flex items-start justify-between">
+                    <div className="w-20 h-20 flex items-center justify-center rounded-3xl bg-green-50 text-green-800 text-4xl group-hover:bg-yellow-500 group-hover:text-green-950 transition-all duration-500 shadow-sm">
+                        {icon}
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 group-hover:translate-x-0 translate-x-4 transition-all duration-500">
+                        <span className="text-3xl text-yellow-600 font-light">→</span>
+                    </div>
                 </div>
-                <div className="flex flex-col gap-3">
-                    <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-green-700 to-emerald-600 bg-clip-text text-transparent">
+
+                <div className="flex flex-col gap-4">
+                    <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">
                         {title}
                     </h2>
-                    <p className="text-gray-700 text-sm leading-relaxed">
+                    <p className="text-gray-600 text-lg leading-relaxed font-medium">
                         {des}
                     </p>
                 </div>
-                <span className="text-2xl text-green-600 mt-2 group-hover:translate-x-2 transition-transform duration-300">
-                    <HiArrowRight />
-                </span>
+
+                <div className="w-full h-1.5 bg-gray-50 rounded-full overflow-hidden">
+                    <motion.div
+                        initial={{ width: 0 }}
+                        whileInView={{ width: "35%" }}
+                        transition={{ duration: 1.2, delay: 0.5 }}
+                        className="h-full bg-yellow-500 rounded-full"
+                    />
+                </div>
             </div>
-        </div>
+        </motion.div>
     );
 };
 

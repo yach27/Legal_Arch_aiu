@@ -14,7 +14,7 @@ class AccountController extends Controller
     public function index(Request $request)
     {
         // Get all users with their permissions
-        $users = User::select('user_id', 'firstname', 'lastname', 'middle_name', 'email', 'role', 'can_edit', 'can_delete', 'can_archive', 'can_upload', 'can_view')
+        $users = User::select('user_id', 'firstname', 'lastname', 'middle_name', 'email', 'role', 'status', 'can_edit', 'can_delete', 'can_archive', 'can_upload', 'can_view')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($user) {
@@ -46,7 +46,7 @@ class AccountController extends Controller
      */
     public function getUsers(Request $request)
     {
-        $users = User::select('user_id', 'firstname', 'lastname', 'middle_name', 'email', 'role', 'created_at', 'can_edit', 'can_delete', 'can_archive', 'can_upload', 'can_view')
+        $users = User::select('user_id', 'firstname', 'lastname', 'middle_name', 'email', 'role', 'status', 'created_at', 'can_edit', 'can_delete', 'can_archive', 'can_upload', 'can_view')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($user) {
@@ -96,7 +96,7 @@ class AccountController extends Controller
                 'email' => $validated['email'],
                 'password' => bcrypt($validated['password']),
                 'role' => $validated['role'],
-                'status' => $validated['status'] ?? 'active',
+                'status' => strtolower($validated['status'] ?? 'active'),
             ];
 
             if (isset($validated['permissions'])) {
@@ -177,7 +177,7 @@ class AccountController extends Controller
                 'middle_name' => $validated['middle_name'] ?? $user->middle_name,
                 'email' => $validated['email'] ?? $user->email,
                 'role' => $validated['role'] ?? $user->role,
-                'status' => $validated['status'] ?? $user->status,
+                'status' => isset($validated['status']) ? strtolower($validated['status']) : $user->status,
                 'password' => isset($validated['password']) ? bcrypt($validated['password']) : $user->password,
             ];
 
@@ -195,10 +195,45 @@ class AccountController extends Controller
 
             // Send notification if permissions changed and user is staff
             if ($user->role === 'staff' && isset($validated['permissions'])) {
+                // Build detailed permission message
+                $grantedPermissions = [];
+                $revokedPermissions = [];
+                
+                $permissionLabels = [
+                    'can_edit' => 'Edit Documents',
+                    'can_delete' => 'Delete Documents',
+                    'can_archive' => 'Archive Documents',
+                    'can_upload' => 'Upload Documents',
+                    'can_view' => 'View Documents',
+                ];
+                
+                foreach ($permissionLabels as $key => $label) {
+                    if (isset($permissions[$key])) {
+                        if ($permissions[$key]) {
+                            $grantedPermissions[] = $label;
+                        } else {
+                            $revokedPermissions[] = $label;
+                        }
+                    }
+                }
+                
+                // Build notification message
+                $messageParts = [];
+                if (!empty($grantedPermissions)) {
+                    $messageParts[] = 'Granted: ' . implode(', ', $grantedPermissions);
+                }
+                if (!empty($revokedPermissions)) {
+                    $messageParts[] = 'Revoked: ' . implode(', ', $revokedPermissions);
+                }
+                
+                $detailedMessage = !empty($messageParts) 
+                    ? 'Your permissions have been updated. ' . implode('. ', $messageParts) . '.'
+                    : 'Your account permissions have been updated by the administrator.';
+                
                  \App\Models\Notification::create([
                     'user_id' => $user->user_id,
                     'title' => 'Permissions Updated',
-                    'message' => 'Your account permissions have been updated by the administrator.',
+                    'message' => $detailedMessage,
                     'type' => 'info',
                     'is_read' => false,
                 ]);
@@ -255,6 +290,35 @@ class AccountController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to delete user: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get documents uploaded by a specific user
+     */
+    public function getUserDocuments($user_id)
+    {
+        try {
+            $documents = \App\Models\Document::leftJoin('folders', 'documents.folder_id', '=', 'folders.folder_id')
+                ->where('documents.created_by', $user_id)
+                ->select(
+                    'documents.doc_id',
+                    'documents.title',
+                    'documents.created_at',
+                    'documents.status',
+                    'folders.folder_name',
+                    'folders.folder_path'
+                )
+                ->orderBy('documents.created_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'documents' => $documents
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to fetch user documents: ' . $e->getMessage(),
             ], 500);
         }
     }

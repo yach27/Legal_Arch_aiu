@@ -56,75 +56,82 @@ const Contact: React.FC = () => {
             <div className="w-full mt-10">
                 <div className="w-full flex flex-col lgl:flex-row justify-between gap-6">
                     <ContactLeft />
-                    <div className="w-full lgl:w-[60%] h-full p-4 lgl:p-8 bg-white/40 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30">
-                        <form className="w-full flex flex-col gap-6">
+                    <div className="w-full lgl:w-[60%] h-full p-6 lgl:p-10 bg-white rounded-[2.5rem] shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-gray-100">
+                        <form className="w-full flex flex-col gap-8">
                             {(errMsg || successMsg) && (
                                 <p
-                                    className={`py-3 text-center text-base tracking-wide ${errMsg
-                                            ? "text-red-500"
-                                            : "text-green-600"
+                                    className={`py-4 text-center text-base font-semibold rounded-2xl ${errMsg
+                                        ? "bg-red-50 text-red-600 border border-red-100"
+                                        : "bg-green-50 text-green-700 border border-green-100"
                                         }`}
                                 >
                                     {errMsg || successMsg}
                                 </p>
                             )}
 
-                            <div className="w-full flex flex-col lgl:flex-row gap-6">
-                                <div className="text-3xl font-bold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                                    Send Message !!{" "}
-                                </div>
-                                <div className="w-full lgl:w-1/2 flex flex-col gap-2">
-                                    <label className="text-sm text-gray-700 uppercase font-semibold">
-                                        Your name
-                                    </label>
-                                    <input
-                                        onChange={(
-                                            e: ChangeEvent<HTMLInputElement>,
-                                        ) => setUsername(e.target.value)}
-                                        value={username}
-                                        className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg ===
-                                            "Username is required!" &&
-                                            "border-red-500"
-                                            }`}
-                                        type="text"
-                                    />
-                                </div>
-                                <div className="w-full lgl:w-1/2 flex flex-col gap-2">
-                                    <label className="text-sm text-gray-700 uppercase font-semibold">
-                                        Phone Number
-                                    </label>
-                                    <input
-                                        onChange={(
-                                            e: ChangeEvent<HTMLInputElement>,
-                                        ) => setPhoneNumber(e.target.value)}
-                                        value={phoneNumber}
-                                        className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg ===
-                                            "Phone number is required!" &&
-                                            "border-red-500"
-                                            }`}
-                                        type="text"
-                                    />
+                            <div className="w-full flex flex-col gap-6">
+                                <h3 className="text-4xl font-black text-gray-900 flex items-center gap-4">
+                                    Send Message
+                                    <span className="text-yellow-500 text-5xl">!!</span>
+                                </h3>
+
+                                <div className="flex flex-col lgl:flex-row gap-6 mt-4">
+                                    <div className="w-full lgl:w-1/2 flex flex-col gap-3">
+                                        <label className="text-sm text-gray-500 uppercase font-bold tracking-widest pl-1">
+                                            Your name
+                                        </label>
+                                        <input
+                                            onChange={(
+                                                e: ChangeEvent<HTMLInputElement>,
+                                            ) => setUsername(e.target.value)}
+                                            value={username}
+                                            placeholder="Enter your full name"
+                                            className={`bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-gray-900 placeholder:text-gray-300 focus:bg-white focus:border-green-700 focus:ring-4 focus:ring-green-700/5 outline-none transition-all duration-300 ${errMsg ===
+                                                "Username is required!" &&
+                                                "border-red-500 bg-red-50"
+                                                }`}
+                                            type="text"
+                                        />
+                                    </div>
+                                    <div className="w-full lgl:w-1/2 flex flex-col gap-3">
+                                        <label className="text-sm text-gray-500 uppercase font-bold tracking-widest pl-1">
+                                            Phone Number
+                                        </label>
+                                        <input
+                                            onChange={(
+                                                e: ChangeEvent<HTMLInputElement>,
+                                            ) => setPhoneNumber(e.target.value)}
+                                            value={phoneNumber}
+                                            placeholder="+63 --- --- ----"
+                                            className={`bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-gray-900 placeholder:text-gray-300 focus:bg-white focus:border-green-700 focus:ring-4 focus:ring-green-700/5 outline-none transition-all duration-300 ${errMsg ===
+                                                "Phone number is required!" &&
+                                                "border-red-500 bg-red-50"
+                                                }`}
+                                            type="text"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm text-gray-700 uppercase font-semibold">
-                                    Email
+                            <div className="flex flex-col gap-3">
+                                <label className="text-sm text-gray-500 uppercase font-bold tracking-widest pl-1">
+                                    Email Address
                                 </label>
                                 <input
                                     onChange={(
                                         e: ChangeEvent<HTMLInputElement>,
                                     ) => setEmail(e.target.value)}
                                     value={email}
-                                    className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Please give your Email!" &&
-                                        "border-red-500"
+                                    placeholder="example@email.com"
+                                    className={`bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-gray-900 placeholder:text-gray-300 focus:bg-white focus:border-green-700 focus:ring-4 focus:ring-green-700/5 outline-none transition-all duration-300 ${errMsg === "Please give your Email!" &&
+                                        "border-red-500 bg-red-50"
                                         }`}
                                     type="email"
                                 />
                             </div>
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm text-gray-700 uppercase font-semibold">
+                            <div className="flex flex-col gap-3">
+                                <label className="text-sm text-gray-500 uppercase font-bold tracking-widest pl-1">
                                     Subject
                                 </label>
                                 <input
@@ -132,15 +139,16 @@ const Contact: React.FC = () => {
                                         e: ChangeEvent<HTMLInputElement>,
                                     ) => setSubject(e.target.value)}
                                     value={subject}
-                                    className={`contactInput bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Plese give your Subject!" &&
-                                        "border-red-500"
+                                    placeholder="How can we help?"
+                                    className={`bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-gray-900 placeholder:text-gray-300 focus:bg-white focus:border-green-700 focus:ring-4 focus:ring-green-700/5 outline-none transition-all duration-300 ${errMsg === "Plese give your Subject!" &&
+                                        "border-red-500 bg-red-50"
                                         }`}
                                     type="text"
                                 />
                             </div>
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm text-gray-700 uppercase font-semibold">
+                            <div className="flex flex-col gap-3">
+                                <label className="text-sm text-gray-500 uppercase font-bold tracking-widest pl-1">
                                     Message
                                 </label>
                                 <textarea
@@ -148,19 +156,20 @@ const Contact: React.FC = () => {
                                         e: ChangeEvent<HTMLTextAreaElement>,
                                     ) => setMessage(e.target.value)}
                                     value={message}
-                                    className={`contactTextArea bg-white/50 backdrop-blur-sm border-2 border-white/40 rounded-xl p-3 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all ${errMsg === "Message is required!" &&
-                                        "border-red-500"
+                                    placeholder="Write your message here..."
+                                    className={`bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-gray-900 placeholder:text-gray-300 focus:bg-white focus:border-green-700 focus:ring-4 focus:ring-green-700/5 outline-none transition-all duration-300 min-h-[160px] ${errMsg === "Message is required!" &&
+                                        "border-red-500 bg-red-50"
                                         }`}
-                                    rows={6}
+                                    rows={5}
                                 />
                             </div>
 
-                            <div className="w-full">
+                            <div className="w-full mt-2">
                                 <button
                                     onClick={handleSend}
-                                    className="w-full h-14 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl text-base font-bold tracking-wide hover:from-green-600 hover:to-emerald-700 hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 shadow-lg"
+                                    className="w-full h-16 bg-green-800 text-white rounded-2xl text-lg font-black tracking-widest hover:bg-green-900 border-b-4 border-yellow-600 shadow-xl shadow-green-900/10 transform hover:-translate-y-1 transition-all duration-300"
                                 >
-                                    Send Message
+                                    SEND MESSAGE
                                 </button>
                             </div>
                         </form>

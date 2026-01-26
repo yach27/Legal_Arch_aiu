@@ -1,12 +1,13 @@
 import React, { useState, useEffect, JSX } from 'react';
 import { flushSync } from 'react-dom';
 import { createPortal } from 'react-dom';
-import { Plus, FileText, FolderPlus, Folder as FolderIcon, Archive, ScanLine, Lock, ArrowUpDown } from 'lucide-react';
+import { Plus, FileText, FolderPlus, Folder as FolderIcon, Archive, ScanLine, Lock, ArrowUpDown, LayoutGrid, List } from 'lucide-react';
 
 
 import SearchBar from '../SearhBar/SearchBar';
 import FolderCard from '../Folder/FolderCard';
 import DocumentListItem from './DocumentListItem';
+import DocumentGridItem from './DocumentGridItem';
 import BreadcrumbNav from './BreadcrumbNav';
 import AddFolderModal from '../Folder/AddFolderModal';
 import MultiFileUploadUI from '../FileUpload/MultiFileUploadUI';
@@ -39,6 +40,7 @@ interface DocumentManagementState {
   filters: DocumentFilters;
   sortField: 'name' | 'date';
   sortOrder: 'asc' | 'desc';
+  documentViewMode: 'list' | 'grid';
 }
 
 
@@ -54,7 +56,8 @@ const DocumentManagement: React.FC = () => {
     loading: false,
     filters: {},
     sortField: 'date',
-    sortOrder: 'desc'
+    sortOrder: 'desc',
+    documentViewMode: 'list'
   });
 
 
@@ -142,14 +145,27 @@ const DocumentManagement: React.FC = () => {
     loading,
     filters,
     sortField,
-    sortOrder
+    sortOrder,
+    documentViewMode
   } = state;
 
 
   // Load initial data
   useEffect(() => {
     loadInitialData();
+
+    // Initialize view mode from localStorage
+    const savedViewMode = localStorage.getItem('documentViewMode') as 'list' | 'grid';
+    if (savedViewMode && (savedViewMode === 'list' || savedViewMode === 'grid')) {
+      setState(prev => ({ ...prev, documentViewMode: savedViewMode }));
+    }
   }, []);
+
+  // Persist view mode changes
+  useEffect(() => {
+    localStorage.setItem('documentViewMode', documentViewMode);
+  }, [documentViewMode]);
+
 
   // Check for folder query parameter and navigate to that folder (only once on initial load)
   const hasNavigatedFromUrl = React.useRef(false);
@@ -352,7 +368,8 @@ const DocumentManagement: React.FC = () => {
         loading: true,
         filters: {},
         sortField: 'date',
-        sortOrder: 'desc'
+        sortOrder: 'desc',
+        documentViewMode: 'list'
       });
 
 
@@ -570,7 +587,7 @@ const DocumentManagement: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-6" style={{ WebkitOverflowScrolling: 'touch' }}>
           <div className="max-w-7xl mx-auto">
             {/* Header - Forest Green Design */}
-            <div className="rounded-xl shadow-sm border border-green-100/50 p-6 mb-6" style={{ backgroundColor: '#1b5e20' }}>
+            <div className="rounded-xl shadow-sm p-6 mb-6" style={{ backgroundColor: '#1b5e20' }}>
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-3xl font-bold text-white">DOCUMENTS</h1>
@@ -578,12 +595,23 @@ const DocumentManagement: React.FC = () => {
                     Manage your legal documents and folders
                   </p>
                   <div className="flex items-center gap-6 mt-4 text-sm text-gray-300 font-normal">
-                    <span>{folderCount} folders</span>
-                    <span>{documentCount} documents</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-lg">{folderCount}</span>
+                      <span className="text-green-100/80">folders</span>
+                    </div>
+                    <div className="w-px h-4 bg-white/20"></div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-lg">{documentCount}</span>
+                      <span className="text-green-100/80">documents</span>
+                    </div>
                     {currentFolder && (
-                      <span>
-                        {getFolderDocumentCount(currentFolder.folder_id)} documents in current folder
-                      </span>
+                      <>
+                        <div className="w-px h-4 bg-white/20"></div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-lg">{getFolderDocumentCount(currentFolder.folder_id)}</span>
+                          <span className="text-green-100/80">documents in current folder</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -691,6 +719,23 @@ const DocumentManagement: React.FC = () => {
                         </button>
                       </div>
                     )}
+                  </div>
+
+                  <div className="flex bg-white/10 rounded-lg p-1 border border-white/20">
+                    <button
+                      onClick={() => setState(prev => ({ ...prev, documentViewMode: 'list' }))}
+                      className={`p-1.5 rounded-md transition-all ${documentViewMode === 'list' ? 'bg-white text-green-700 shadow-sm' : 'text-white hover:bg-white/10'}`}
+                      title="List View"
+                    >
+                      <List className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setState(prev => ({ ...prev, documentViewMode: 'grid' }))}
+                      className={`p-1.5 rounded-md transition-all ${documentViewMode === 'grid' ? 'bg-white text-green-700 shadow-sm' : 'text-white hover:bg-white/10'}`}
+                      title="Grid View"
+                    >
+                      <LayoutGrid className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
 
@@ -817,16 +862,30 @@ const DocumentManagement: React.FC = () => {
                               <p className="text-sm font-normal text-gray-600">Loading archived documents...</p>
                             </div>
                           ) : sortedDocuments.length > 0 ? (
-                            sortedDocuments.map((document) => (
+                            documentViewMode === 'list' ? (
+                              sortedDocuments.map((document) => (
 
-                              <DocumentListItem
-                                key={document.doc_id}
-                                document={document}
-                                onDocumentUpdated={async () => {
-                                  await loadDocuments();
-                                }}
-                              />
-                            ))
+                                <DocumentListItem
+                                  key={document.doc_id}
+                                  document={document}
+                                  onDocumentUpdated={async () => {
+                                    await loadDocuments();
+                                  }}
+                                />
+                              ))
+                            ) : (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 gap-y-10 p-4">
+                                {sortedDocuments.map((document) => (
+                                  <DocumentGridItem
+                                    key={document.doc_id}
+                                    document={document}
+                                    onDocumentUpdated={async () => {
+                                      await loadDocuments();
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )
                           ) : (
                             <div className="p-12 text-center">
                               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -909,18 +968,34 @@ const DocumentManagement: React.FC = () => {
                                 <span className="text-gray-600">Loading documents...</span>
                               </div>
                             ) : (
-                              sortedDocuments.map((document) => (
+                              documentViewMode === 'list' ? (
+                                sortedDocuments.map((document) => (
 
-                                <DocumentListItem
-                                  key={`doc-${document.doc_id}`}
-                                  document={document}
-                                  folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
-                                  onDocumentUpdated={async () => {
-                                    await loadDocuments();
-                                    await refreshCounts();
-                                  }}
-                                />
-                              ))
+                                  <DocumentListItem
+                                    key={`doc-${document.doc_id}`}
+                                    document={document}
+                                    folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
+                                    onDocumentUpdated={async () => {
+                                      await loadDocuments();
+                                      await refreshCounts();
+                                    }}
+                                  />
+                                ))
+                              ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 gap-y-10 p-4">
+                                  {sortedDocuments.map((document) => (
+                                    <DocumentGridItem
+                                      key={`doc-${document.doc_id}`}
+                                      document={document}
+                                      folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
+                                      onDocumentUpdated={async () => {
+                                        await loadDocuments();
+                                        await refreshCounts();
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              )
                             )}
 
                             {/* Empty State - Only show when truly empty */}

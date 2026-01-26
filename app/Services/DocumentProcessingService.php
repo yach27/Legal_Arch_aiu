@@ -95,7 +95,9 @@ class DocumentProcessingService
             }
 
             // Update document status to active after successful processing
-            $updateData = ['status' => 'active'];
+            // REMOVED: Do not set to active yet. Wait for user to accept AI suggestions or manual review.
+            // $updateData = ['status' => 'active'];
+            $updateData = [];
 
             // Keep AI-generated remarks if we have them, otherwise clear old processing info
             if (empty($document->remarks) || str_contains($document->remarks, 'Processed into') || str_contains($document->remarks, 'chunks')) {

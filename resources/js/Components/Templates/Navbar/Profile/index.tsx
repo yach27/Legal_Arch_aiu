@@ -198,7 +198,7 @@ const ProfileDropdown: React.FC = () => {
             const formData = new FormData();
             formData.append('profile_picture', file);
 
-            const response = await fetch('/admin/profile/upload-picture', {
+            const response = await fetch('/profile/upload-picture', {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
@@ -251,7 +251,7 @@ const ProfileDropdown: React.FC = () => {
             const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-            const response = await fetch('/admin/profile/update', {
+            const response = await fetch('/profile/update', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -305,7 +305,7 @@ const ProfileDropdown: React.FC = () => {
             const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-            const response = await fetch('/admin/profile/delete', {
+            const response = await fetch('/profile/delete', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

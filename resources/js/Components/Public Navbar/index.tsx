@@ -20,15 +20,15 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
     const [showMenu, setShowMenu] = useState(false);
 
     return (
-        <header className="sticky top-0 z-50 w-full bg-white/30 backdrop-blur-xl border-b border-white/20 shadow-lg px-4 lg:px-10 py-5 flex justify-between items-center">
+        <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-100 shadow-sm px-4 lg:px-10 py-5 flex justify-between items-center">
             <div className="flex items-center gap-3">
                 {/* <img src={logo} alt="logo" className="w-10 h-10" /> */}
-                <h1 className="text-xl font-bold text-green-800 drop-shadow-sm">
-                    CMU Legal Archiving System
+                <h1 className="text-xl font-black text-green-900 tracking-tight">
+                    CMU Legal <span className="text-yellow-600">Archiving</span>
                 </h1>
             </div>
 
-            <ul className="hidden lg:flex space-x-10 text-sm font-semibold justify-center">
+            <ul className="hidden lg:flex space-x-10 text-sm font-bold justify-center uppercase tracking-widest">
                 {navLinksdata.map((item) => (
                     <li key={item._id}>
                         <Link
@@ -38,7 +38,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
                             offset={-70}
                             duration={500}
                             activeClass="active-link"
-                            className="cursor-pointer text-green-800 hover:text-green-600 transition-all duration-300 hover:scale-110 inline-block font-medium"
+                            className="cursor-pointer text-gray-500 hover:text-green-800 transition-all duration-300 hover:scale-105 inline-block"
                         >
                             {item.title}
                         </Link>
@@ -50,7 +50,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
             <div className="hidden lg:flex items-center gap-4">
                 <button
                     onClick={onLoginClick}
-                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-10 py-2.5 rounded-full font-bold hover:from-green-600 hover:to-emerald-700 hover:shadow-xl transform hover:scale-105 transition-all duration-300 shadow-md"
+                    className="bg-green-800 text-white px-10 py-2.5 rounded-xl font-bold hover:bg-green-900 border-b-2 border-yellow-500 shadow-md transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0"
                 >
                     Login
                 </button>
@@ -68,7 +68,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLoginClick, onRegisterClick }) => {
 
             {/* Mobile Sidebar Menu */}
             {showMenu && (
-                <div className="absolute top-0 left-0 w-[80%] h-screen bg-white/40 backdrop-blur-2xl p-6 shadow-2xl z-50 border-r border-white/30">
+                <div className="absolute top-0 left-0 w-[80%] h-screen bg-white p-6 shadow-2xl z-50 border-r border-gray-100">
                     <div className="flex justify-between items-center mb-6">
                         {/* <img src={logo} alt="logo" className="w-14" /> */}
                         <button

@@ -3,10 +3,10 @@ import React from 'react';
 import { ArrowLeft, Home, ChevronRight } from 'lucide-react';
 import { BreadcrumbNavProps, Folder } from '../../types/types';
 
-const BreadcrumbNav: React.FC<BreadcrumbNavProps> = ({ 
-  currentFolder, 
-  onNavigate, 
-  breadcrumbPath = [] 
+const BreadcrumbNav: React.FC<BreadcrumbNavProps> = ({
+  currentFolder,
+  onNavigate,
+  breadcrumbPath = []
 }) => {
   const handleBackClick = (): void => {
     onNavigate(null);
@@ -85,8 +85,8 @@ const BreadcrumbNav: React.FC<BreadcrumbNavProps> = ({
       {/* Folder Info */}
       {currentFolder && (
         <div className="hidden lg:flex items-center gap-2 text-xs text-gray-600 bg-gray-100 px-3 py-2 rounded-lg font-normal">
-          <span>Type: {currentFolder.category?.category_name || 'Uncategorized'}</span>
-          <span>•</span>
+
+
           <span title={currentFolder.updated_at}>
             Updated {new Date(currentFolder.updated_at).toLocaleDateString()}
           </span>

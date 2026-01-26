@@ -45,11 +45,10 @@ Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/account/users', [AccountController::class, 'store'])->name('admin.account.store');
     Route::put('/account/users/{user_id}', [AccountController::class, 'update'])->name('admin.account.update');
     Route::delete('/account/users/{user_id}', [AccountController::class, 'destroy'])->name('admin.account.destroy');
+    Route::get('/account/users/{user_id}/documents', [AccountController::class, 'getUserDocuments'])->name('admin.account.documents');
 
-    // User Profile Management Routes
-    Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
-    Route::post('/profile/upload-picture', [UserProfileController::class, 'uploadProfilePicture'])->name('profile.upload-picture');
-    Route::post('/profile/delete', [UserProfileController::class, 'delete'])->name('profile.delete');
+    // User Profile Management Routes - MOVED TO SHARED AUTH GROUP
+    // See below outside admin middleware
 
     // Add these routes to your routes/web.php
 
@@ -57,6 +56,14 @@ Route::get('/admin/documents', [DocumentController::class, 'index'])->name('docu
 Route::post('/admin/documents', [DocumentController::class, 'store'])->name('documents.store');
 Route::get('/admin/documents/list', [DocumentController::class, 'getDocuments'])->name('documents.list');
 Route::get('/admin/documents/counts', [DocumentController::class, 'getDocumentCounts'])->name('documents.counts');
+});
+
+// Shared Authenticated Routes (Admin + Staff)
+Route::middleware(['auth'])->group(function () {
+    // User Profile Management Routes
+    Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/upload-picture', [UserProfileController::class, 'uploadProfilePicture'])->name('profile.upload-picture');
+    Route::post('/profile/delete', [UserProfileController::class, 'delete'])->name('profile.delete');
 });
 
 // Staff Routes (Protected) - Session authentication

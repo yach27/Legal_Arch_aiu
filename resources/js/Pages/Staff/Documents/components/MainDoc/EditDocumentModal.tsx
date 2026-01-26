@@ -89,10 +89,17 @@ const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
+      onKeyDown={(e) => {
+        // Prevent spacebar from closing modal when typing in inputs
+        if (e.key === ' ' && (e.target as HTMLElement).tagName !== 'BUTTON') {
+          e.stopPropagation();
+        }
+      }}
     >
       <div
         className="bg-white rounded-xl shadow-sm border border-gray-200 w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-200">

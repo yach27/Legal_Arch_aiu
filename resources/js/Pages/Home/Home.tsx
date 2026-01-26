@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { router } from "@inertiajs/react";
+import { motion } from "framer-motion";
 import Navbar from "../../Components/Public Navbar";
 import Banner from "../../Components/HeroSection/Hero/Banner";
 import About from "../../Components/About/About";
@@ -7,6 +8,9 @@ import News from "../../Components/News";
 import Contact from "../../Components/Contact/Contact";
 import FooterBottom from "../../Components/Footer/FooterBottom";
 import LoginModal from "../../Components/Modal/Login";
+import ScrollReveal from "../../Components/Common/ScrollReveal";
+
+
 
 export default function Home() {
     const [showLogin, setShowLogin] = useState(false);
@@ -40,7 +44,7 @@ export default function Home() {
             // Show loading screen for new users
             const timeout = setTimeout(() => {
                 setLoading(false);
-            }, 3000);
+            }, 1000); // Reduced loading time for better UX
 
             return () => clearTimeout(timeout);
         };
@@ -80,28 +84,34 @@ export default function Home() {
     return (
         <>
             {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
-            <div className="min-h-screen flex flex-col relative overflow-hidden">
-                {/* Glassmorphism Background with Green Theme */}
-                <div className="fixed inset-0 bg-gradient-to-br from-green-200 via-emerald-200 to-teal-200 -z-10">
-                    {/* Animated Gradient Orbs */}
-                    <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-green-400 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
-                    <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-emerald-500 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-2000"></div>
-                    <div className="absolute bottom-0 left-1/2 w-[600px] h-[600px] bg-teal-400 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-4000"></div>
-                    <div className="absolute top-1/2 right-1/4 w-[500px] h-[500px] bg-lime-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-2000"></div>
-                </div>
+            <div className="min-h-screen flex flex-col relative overflow-hidden bg-gray-50/50">
+                {/* Modern subtle background pattern */}
+                <div className="fixed inset-0 pointer-events-none -z-10 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#1b5e20 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
 
                 <Navbar
                     onLoginClick={handleLoginClick}
                     onRegisterClick={() => setShowRegister(true)}
                 />
                 <main className="flex-1 w-full">
-                    <Banner onLoginClick={handleLoginClick} />
-                    <About />
-                    <News />
-                    <Contact />
+                    <ScrollReveal delay={0.1}>
+                        <Banner onLoginClick={handleLoginClick} />
+                    </ScrollReveal>
+
+                    <ScrollReveal delay={0.2}>
+                        <About />
+                    </ScrollReveal>
+
+                    <ScrollReveal delay={0.2}>
+                        <News />
+                    </ScrollReveal>
+
+                    <ScrollReveal delay={0.2}>
+                        <Contact />
+                    </ScrollReveal>
                 </main>
                 <FooterBottom />
             </div>
         </>
     );
 }
+

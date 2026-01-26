@@ -60,7 +60,7 @@ class DocumentQueryService
      */
     public function getDocumentCounts(): array
     {
-        $totalDocuments = Document::count();
+        $totalDocuments = Document::where('status', '!=', 'archived')->count();
         $documentsByStatus = Document::select('status')
             ->selectRaw('count(*) as count')
             ->groupBy('status')

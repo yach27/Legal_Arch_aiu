@@ -106,7 +106,19 @@ const DocumentManagement: React.FC = () => {
   // Load initial data
   useEffect(() => {
     loadInitialData();
+
+    // Initialize view mode from localStorage
+    const savedViewMode = localStorage.getItem('documentViewMode') as 'list' | 'grid';
+    if (savedViewMode && (savedViewMode === 'list' || savedViewMode === 'grid')) {
+      setState(prev => ({ ...prev, documentViewMode: savedViewMode }));
+    }
   }, []);
+
+  // Persist view mode changes
+  useEffect(() => {
+    localStorage.setItem('documentViewMode', documentViewMode);
+  }, [documentViewMode]);
+
 
   // Check for folder query parameter and navigate to that folder (only once on initial load)
   const hasNavigatedFromUrl = React.useRef(false);
@@ -524,23 +536,37 @@ const DocumentManagement: React.FC = () => {
 
       {/* Main Content */}
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-72'}`}>
-        <div className="flex-1 overflow-y-auto p-6 pb-60" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex-1 overflow-y-auto p-6 pb-96" style={{ WebkitOverflowScrolling: 'touch' }}>
           <div className="max-w-7xl mx-auto">
             {/* Header - Forest Green Design */}
-            <div className="rounded-xl shadow-sm border border-green-100/50 p-6 mb-6" style={{ backgroundColor: '#1b5e20' }}>
+            <div className="rounded-xl shadow-sm p-6 mb-6" style={{ backgroundColor: '#1b5e20' }}>
               <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-6">
                 <div>
                   <h1 className="text-3xl font-bold text-white">DOCUMENTS</h1>
                   <p className="text-gray-200 mt-1 font-normal">
                     Manage your legal documents and folders
                   </p>
-                  <div className="flex items-center gap-6 mt-4 text-sm text-gray-300 font-normal">
-                    <span>{folderCount} folders</span>
-                    <span>{documentCount} documents</span>
+                  <div className="flex flex-wrap items-center gap-6 mt-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-lg">{folderCount}</span>
+                      <span className="text-green-100/80">Folders</span>
+                    </div>
+
+                    <div className="w-px h-4 bg-white/20"></div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-lg">{documentCount}</span>
+                      <span className="text-green-100/80">Total Documents</span>
+                    </div>
+
                     {currentFolder && (
-                      <span>
-                        {getFolderDocumentCount(currentFolder.folder_id)} documents in current folder
-                      </span>
+                      <>
+                        <div className="w-px h-4 bg-white/20"></div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-lg">{getFolderDocumentCount(currentFolder.folder_id)}</span>
+                          <span className="text-green-100/80">in this folder</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -664,11 +690,13 @@ const DocumentManagement: React.FC = () => {
 
             {/* Navigation */}
             {viewMode === 'documents' && (
-              <BreadcrumbNav
-                currentFolder={currentFolder}
-                onNavigate={handleBackToFolders}
-                breadcrumbPath={[]} // We'll fix this separately since it needs to be async
-              />
+              <div className="mt-6 mb-6">
+                <BreadcrumbNav
+                  currentFolder={currentFolder}
+                  onNavigate={handleBackToFolders}
+                  breadcrumbPath={[]} // We'll fix this separately since it needs to be async
+                />
+              </div>
             )}
 
             {/* Loading State - Skeleton */}
@@ -747,7 +775,7 @@ const DocumentManagement: React.FC = () => {
                       </div>
                     ) : (
                       // Show filtered documents list when document-level filters are active
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden pb-24 mt-8">
                         <div className="p-6 border-b border-gray-200">
                           <div className="flex items-center justify-between">
                             <div>
@@ -780,7 +808,7 @@ const DocumentManagement: React.FC = () => {
                                 />
                               ))
                             ) : (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 gap-y-10 p-4">
                                 {sortedDocuments.map((document) => (
                                   <DocumentGridItem
                                     key={document.doc_id}
@@ -833,51 +861,68 @@ const DocumentManagement: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="divide-y divide-gray-100">
-                        {isTransitioning ? (
-                          <div className="p-8 text-center text-gray-500">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mx-auto mb-4"></div>
-                            <p className="text-sm font-normal text-gray-600">Loading...</p>
-                          </div>
-                        ) : (
-                          <>
-                            {/* Subfolders */}
-                            {sortedSubfolders.map((folder) => (
-
-                              <div
-                                key={`folder-${folder.folder_id}`}
-                                className="p-4 hover:bg-gray-50 transition-all duration-200 cursor-pointer flex items-center gap-4 group"
-                                onClick={() => handleFolderClick(folder)}
-                              >
-                                <div className="flex-shrink-0">
-                                  <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-all">
-                                    <FolderIcon className="w-6 h-6 text-blue-600" />
+                      <div className="p-6">
+                        {/* Subfolders Section */}
+                        {sortedSubfolders.length > 0 && (
+                          <div className="mb-10">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">Folders</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {sortedSubfolders.map((folder) => (
+                                <div
+                                  key={`folder-${folder.folder_id}`}
+                                  className="p-4 bg-gray-50 hover:bg-white border border-gray-100 hover:border-green-200 rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-4 group hover:shadow-md"
+                                  onClick={() => handleFolderClick(folder)}
+                                >
+                                  <div className="flex-shrink-0">
+                                    <div className="p-2.5 bg-white rounded-lg group-hover:bg-green-50 transition-all shadow-sm border border-gray-100">
+                                      <FolderIcon className="w-6 h-6 text-blue-500 group-hover:text-green-600" />
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className="font-semibold text-gray-900 truncate group-hover:text-green-700 transition-colors">
+                                      {folder.folder_name}
+                                    </h3>
+                                    <p className="text-xs text-gray-500 truncate font-normal mt-0.5">
+                                      {getFolderDocumentCount(folder.folder_id)} items
+                                    </p>
                                   </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="font-semibold text-gray-900 truncate group-hover:text-green-600 transition-colors">
-                                    {folder.folder_name}
-                                  </h3>
-                                  <p className="text-sm text-gray-600 truncate font-normal">
-                                    {folder.folder_path}
-                                  </p>
-                                </div>
-                                <div className="flex-shrink-0 text-sm text-gray-500 font-normal">
-                                  {getFolderDocumentCount(folder.folder_id)} items
-                                </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
-                            {/* Documents */}
-                            {loading && documents.length === 0 ? (
-                              <div className="p-4 text-center text-gray-500 text-sm font-normal">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto mb-2"></div>
-                                <span className="text-gray-600">Loading documents...</span>
+                        {/* Documents Section */}
+                        <div>
+                          {(sortedSubfolders.length > 0 || documents.length > 0) && (
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">Documents</h3>
+                          )}
+
+                          {loading && documents.length === 0 ? (
+                            <div className="p-12 text-center text-gray-500">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+                              <span className="text-gray-600">Loading documents...</span>
+                            </div>
+                          ) : documents.length > 0 ? (
+                            documentViewMode === 'list' ? (
+                              <div className="space-y-2">
+                                {sortedDocuments.map((document) => (
+                                  <div key={`doc-${document.doc_id}`} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:border-green-200 transition-colors">
+                                    <DocumentListItem
+                                      document={document}
+                                      folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
+                                      onDocumentUpdated={async () => {
+                                        await loadDocuments();
+                                        await refreshCounts();
+                                      }}
+                                    />
+                                  </div>
+                                ))}
                               </div>
                             ) : (
-                              documentViewMode === 'list' ? (
-                                sortedDocuments.map((document) => (
-                                  <DocumentListItem
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 gap-y-10">
+                                {sortedDocuments.map((document) => (
+                                  <DocumentGridItem
                                     key={`doc-${document.doc_id}`}
                                     document={document}
                                     folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
@@ -886,30 +931,13 @@ const DocumentManagement: React.FC = () => {
                                       await refreshCounts();
                                     }}
                                   />
-                                ))
-                              ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                  {sortedDocuments.map((document) => (
-                                    <DocumentGridItem
-                                      key={`doc-${document.doc_id}`}
-                                      document={document}
-                                      folders={folders.map(f => ({ folder_id: f.folder_id, folder_name: f.folder_name }))}
-                                      onDocumentUpdated={async () => {
-                                        await loadDocuments();
-                                        await refreshCounts();
-                                      }}
-                                    />
-                                  ))}
-                                </div>
-                              )
-                            )}
-
-                            {/* Empty State - Only show when truly empty */}
-                            {!loading && subfolders.length === 0 && documents.length === 0 && (
-                              renderEmptyDocumentState()
-                            )}
-                          </>
-                        )}
+                                ))}
+                              </div>
+                            )
+                          ) : !loading && subfolders.length === 0 ? (
+                            renderEmptyDocumentState()
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   </>

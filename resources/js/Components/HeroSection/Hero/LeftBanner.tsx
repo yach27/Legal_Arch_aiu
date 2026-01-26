@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { useTypewriter, Cursor } from "react-simple-typewriter";
 
 interface NavbarProps {
@@ -17,39 +18,57 @@ const LeftBanner: React.FC<NavbarProps> = ({ onLoginClick }) => {
         delaySpeed: 2000,
     });
     return (
-        <div className="w-full lg:w-1/2 flex flex-col gap-8 animate-fade-in">
-            {/* Glass Card Container */}
-            <div className="bg-white/40 backdrop-blur-xl rounded-3xl p-8 border border-white/30 shadow-2xl">
-                <div className="flex flex-col gap-6">
-                    <h1 className="text-4xl lg:text-6xl font-extrabold bg-gradient-to-r from-green-700 via-emerald-600 to-teal-600 bg-clip-text text-transparent leading-tight">
-                        Legal Document Management & Retrieval System
+        <motion.div
+            className="w-full lg:w-1/2 flex flex-col gap-8"
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 1, ease: "easeOut" }}
+        >
+            {/* Bento-style Premium Container */}
+            <div className="bg-white rounded-[2.5rem] p-12 border border-gray-100 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_32px_70px_rgba(27,94,32,0.1)] transition-all duration-700 relative overflow-hidden group">
+                {/* Subtle highlight effect */}
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-50 rounded-full blur-3xl opacity-50 group-hover:opacity-100 transition-opacity duration-700"></div>
+
+                <div className="flex flex-col gap-8 relative z-10">
+                    <h1 className="text-5xl lg:text-7xl font-black text-gray-900 leading-[1.1] tracking-tight">
+                        Legal <span className="text-green-800">Archiving</span> <br />
+                        <span className="text-yellow-600 font-light italic">&</span> Search
                     </h1>
-                    <h2 className="text-2xl lg:text-3xl font-bold text-green-700">
-                        <span>{text}</span>
-                        <Cursor
-                            cursorBlinking={false}
-                            cursorStyle="|"
-                            cursorColor="#15803d"
-                        />
-                    </h2>
-                    <p className="text-base lg:text-lg text-gray-700 leading-relaxed">
-                        A secure and efficient system designed for archiving and
-                        retrieving legal reports and documents, ensuring organized
-                        storage and quick access for legal offices.
+
+                    <div className="h-12">
+                        <h2 className="text-2xl lg:text-3xl font-bold text-green-900 flex items-center gap-2">
+                            <span className="w-2 h-10 bg-yellow-500 rounded-full inline-block"></span>
+                            <span>{text}</span>
+                            <Cursor
+                                cursorBlinking={true}
+                                cursorStyle="_"
+                                cursorColor="#ca8a04" // yellow-600
+                            />
+                        </h2>
+                    </div>
+
+                    <p className="text-lg lg:text-xl text-gray-700 leading-relaxed max-w-xl font-medium">
+                        Enterprise-grade legal document management with AI-powered retrieval,
+                        designed for precision and speed in university legal offices.
                     </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                <div className="flex flex-col sm:flex-row gap-5 mt-12 relative z-10">
                     <button
                         onClick={onLoginClick}
-                        className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-4 rounded-2xl font-bold hover:from-green-600 hover:to-emerald-700 hover:shadow-2xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 group shadow-lg"
+                        className="bg-green-800 text-white px-12 py-5 rounded-2xl font-bold hover:bg-green-900 border-b-4 border-yellow-600 shadow-xl shadow-green-900/20 transform hover:-translate-y-1.5 transition-all duration-300 flex items-center justify-center gap-4 group text-lg"
                     >
                         GET STARTED
-                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                        <span className="group-hover:translate-x-2 transition-transform text-2xl text-yellow-400">→</span>
                     </button>
+
+                    <div className="flex items-center gap-4 px-6 text-sm font-semibold text-gray-500">
+                        <span className="flex h-2.5 w-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
+                        Trusted by CMU Legal
+                    </div>
                 </div>
             </div>
-        </div>
+        </motion.div>
     );
 };
 

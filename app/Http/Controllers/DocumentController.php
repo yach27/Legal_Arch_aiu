@@ -842,11 +842,19 @@ class DocumentController extends Controller
             }
 
             $user = auth()->user();
+            
+            // Allow deletion if user has permission OR if it's their own document in 'processing' state
+            $isOwner = $document->created_by === $user->user_id || $document->created_by === $user->id;
+            $isProcessing = $document->status === 'processing';
+            
             if (!$user->can_delete && $user->role !== 'admin') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You do not have permission to delete documents'
-                ], 403);
+                // If they don't have global delete permission, check if it's their own draft
+                if (!($isOwner && $isProcessing)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You do not have permission to delete documents'
+                    ], 403);
+                }
             }
 
             // Log the activity BEFORE deleting

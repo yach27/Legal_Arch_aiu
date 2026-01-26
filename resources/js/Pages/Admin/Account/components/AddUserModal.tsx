@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Eye, EyeOff } from "lucide-react";
 
 interface AddUserModalProps {
@@ -111,261 +112,272 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onSubmit }
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                    <h2 className="text-2xl font-bold text-gray-900">Add New User</h2>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        <X className="w-6 h-6" />
-                    </button>
-                </div>
+    const modalContent = (
+        <div className="fixed inset-0 z-[9999]">
+            {/* Backdrop with blur effect */}
+            <div
+                className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+                onClick={onClose}
+            />
 
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    {/* Name Row */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                First Name *
-                            </label>
-                            <input
-                                type="text"
-                                name="firstname"
-                                value={formData.firstname}
-                                onChange={handleInputChange}
-                                className={`w-full px-4 py-2 rounded-lg border ${errors.firstname ? 'border-red-500' : 'border-gray-300'
-                                    } focus:outline-none focus:ring-2 focus:ring-green-500`}
-                                placeholder="John"
-                            />
-                            {errors.firstname && (
-                                <p className="text-red-500 text-xs mt-1">{errors.firstname}</p>
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                Last Name *
-                            </label>
-                            <input
-                                type="text"
-                                name="lastname"
-                                value={formData.lastname}
-                                onChange={handleInputChange}
-                                className={`w-full px-4 py-2 rounded-lg border ${errors.lastname ? 'border-red-500' : 'border-gray-300'
-                                    } focus:outline-none focus:ring-2 focus:ring-green-500`}
-                                placeholder="Doe"
-                            />
-                            {errors.lastname && (
-                                <p className="text-red-500 text-xs mt-1">{errors.lastname}</p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Middle Name */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Middle Name
-                        </label>
-                        <input
-                            type="text"
-                            name="middle_name"
-                            value={formData.middle_name}
-                            onChange={handleInputChange}
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
-                            placeholder="Michael"
-                        />
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Email *
-                        </label>
-                        <input
-                            type="email"
-                            name="email"
-                            value={formData.email}
-                            onChange={handleInputChange}
-                            className={`w-full px-4 py-2 rounded-lg border ${errors.email ? 'border-red-500' : 'border-gray-300'
-                                } focus:outline-none focus:ring-2 focus:ring-green-500`}
-                            placeholder="john@example.com"
-                        />
-                        {errors.email && (
-                            <p className="text-red-500 text-xs mt-1">{errors.email}</p>
-                        )}
-                    </div>
-
-                    {/* Password */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Password *
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showPassword ? "text" : "password"}
-                                name="password"
-                                value={formData.password}
-                                onChange={handleInputChange}
-                                className={`w-full px-4 py-2 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300'
-                                    } focus:outline-none focus:ring-2 focus:ring-green-500`}
-                                placeholder="••••••"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-700"
-                            >
-                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                            </button>
-                        </div>
-                        {errors.password && (
-                            <p className="text-red-500 text-xs mt-1">{errors.password}</p>
-                        )}
-                    </div>
-
-                    {/* Confirm Password */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Confirm Password *
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showConfirmPassword ? "text" : "password"}
-                                name="confirmPassword"
-                                value={formData.confirmPassword}
-                                onChange={handleInputChange}
-                                className={`w-full px-4 py-2 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
-                                    } focus:outline-none focus:ring-2 focus:ring-green-500`}
-                                placeholder="••••••"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-700"
-                            >
-                                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                            </button>
-                        </div>
-                        {errors.confirmPassword && (
-                            <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>
-                        )}
-                    </div>
-
-                    {/* Role */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Role *
-                        </label>
-                        <select
-                            name="role"
-                            value={formData.role}
-                            onChange={handleInputChange}
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                        >
-                            <option value="admin">Admin</option>
-                            <option value="staff">Staff</option>
-                        </select>
-                    </div>
-
-                    {/* Permissions */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-3">
-                            Document Permissions
-                        </label>
-                        <div className="space-y-2">
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="can_view"
-                                    name="can_view"
-                                    checked={formData.can_view}
-                                    onChange={handleInputChange}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
-                                />
-                                <label htmlFor="can_view" className="ml-2 text-sm text-gray-700">
-                                    View Documents
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="can_upload"
-                                    name="can_upload"
-                                    checked={formData.can_upload}
-                                    onChange={handleInputChange}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
-                                />
-                                <label htmlFor="can_upload" className="ml-2 text-sm text-gray-700">
-                                    Upload Documents
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="can_delete"
-                                    name="can_delete"
-                                    checked={formData.can_delete}
-                                    onChange={handleInputChange}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
-                                />
-                                <label htmlFor="can_delete" className="ml-2 text-sm text-gray-700">
-                                    Delete Documents
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="can_edit"
-                                    name="can_edit"
-                                    checked={formData.can_edit}
-                                    onChange={handleInputChange}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
-                                />
-                                <label htmlFor="can_edit" className="ml-2 text-sm text-gray-700">
-                                    Edit Documents
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="can_archive"
-                                    name="can_archive"
-                                    checked={formData.can_archive}
-                                    onChange={handleInputChange}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
-                                />
-                                <label htmlFor="can_archive" className="ml-2 text-sm text-gray-700">
-                                    Archive Documents
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Buttons */}
-                    <div className="flex gap-3 pt-6 border-t border-gray-200">
+            {/* Modal container */}
+            <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto pointer-events-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                        <h2 className="text-2xl font-bold text-gray-900">Add New User</h2>
                         <button
-                            type="button"
                             onClick={onClose}
-                            className="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                            className="text-gray-500 hover:text-gray-700 transition-colors"
                         >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="flex-1 px-4 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {loading ? "Creating..." : "Create User"}
+                            <X className="w-6 h-6" />
                         </button>
                     </div>
-                </form>
+
+                    {/* Form */}
+                    <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                        {/* Name Row */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    First Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    name="firstname"
+                                    value={formData.firstname}
+                                    onChange={handleInputChange}
+                                    className={`w-full px-4 py-2 rounded-lg border ${errors.firstname ? 'border-red-500' : 'border-gray-300'
+                                        } focus:outline-none focus:ring-2 focus:ring-green-500`}
+                                    placeholder="John"
+                                />
+                                {errors.firstname && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.firstname}</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Last Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    name="lastname"
+                                    value={formData.lastname}
+                                    onChange={handleInputChange}
+                                    className={`w-full px-4 py-2 rounded-lg border ${errors.lastname ? 'border-red-500' : 'border-gray-300'
+                                        } focus:outline-none focus:ring-2 focus:ring-green-500`}
+                                    placeholder="Doe"
+                                />
+                                {errors.lastname && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.lastname}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Middle Name */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Middle Name
+                            </label>
+                            <input
+                                type="text"
+                                name="middle_name"
+                                value={formData.middle_name}
+                                onChange={handleInputChange}
+                                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                placeholder="Michael"
+                            />
+                        </div>
+
+                        {/* Email */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Email *
+                            </label>
+                            <input
+                                type="email"
+                                name="email"
+                                value={formData.email}
+                                onChange={handleInputChange}
+                                className={`w-full px-4 py-2 rounded-lg border ${errors.email ? 'border-red-500' : 'border-gray-300'
+                                    } focus:outline-none focus:ring-2 focus:ring-green-500`}
+                                placeholder="john@example.com"
+                            />
+                            {errors.email && (
+                                <p className="text-red-500 text-xs mt-1">{errors.email}</p>
+                            )}
+                        </div>
+
+                        {/* Password */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Password *
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleInputChange}
+                                    className={`w-full px-4 py-2 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300'
+                                        } focus:outline-none focus:ring-2 focus:ring-green-500`}
+                                    placeholder="••••••"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-700"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                            {errors.password && (
+                                <p className="text-red-500 text-xs mt-1">{errors.password}</p>
+                            )}
+                        </div>
+
+                        {/* Confirm Password */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Confirm Password *
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type={showConfirmPassword ? "text" : "password"}
+                                    name="confirmPassword"
+                                    value={formData.confirmPassword}
+                                    onChange={handleInputChange}
+                                    className={`w-full px-4 py-2 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                                        } focus:outline-none focus:ring-2 focus:ring-green-500`}
+                                    placeholder="••••••"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-700"
+                                >
+                                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                            {errors.confirmPassword && (
+                                <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>
+                            )}
+                        </div>
+
+                        {/* Role */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Role *
+                            </label>
+                            <select
+                                name="role"
+                                value={formData.role}
+                                onChange={handleInputChange}
+                                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                            >
+                                <option value="admin">Admin</option>
+                                <option value="staff">Staff</option>
+                            </select>
+                        </div>
+
+                        {/* Permissions */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-3">
+                                Document Permissions
+                            </label>
+                            <div className="space-y-2">
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="can_view"
+                                        name="can_view"
+                                        checked={formData.can_view}
+                                        onChange={handleInputChange}
+                                        className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <label htmlFor="can_view" className="ml-2 text-sm text-gray-700">
+                                        View Documents
+                                    </label>
+                                </div>
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="can_upload"
+                                        name="can_upload"
+                                        checked={formData.can_upload}
+                                        onChange={handleInputChange}
+                                        className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <label htmlFor="can_upload" className="ml-2 text-sm text-gray-700">
+                                        Upload Documents
+                                    </label>
+                                </div>
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="can_delete"
+                                        name="can_delete"
+                                        checked={formData.can_delete}
+                                        onChange={handleInputChange}
+                                        className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <label htmlFor="can_delete" className="ml-2 text-sm text-gray-700">
+                                        Delete Documents
+                                    </label>
+                                </div>
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="can_edit"
+                                        name="can_edit"
+                                        checked={formData.can_edit}
+                                        onChange={handleInputChange}
+                                        className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <label htmlFor="can_edit" className="ml-2 text-sm text-gray-700">
+                                        Edit Documents
+                                    </label>
+                                </div>
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="can_archive"
+                                        name="can_archive"
+                                        checked={formData.can_archive}
+                                        onChange={handleInputChange}
+                                        className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <label htmlFor="can_archive" className="ml-2 text-sm text-gray-700">
+                                        Archive Documents
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Buttons */}
+                        <div className="flex gap-3 pt-6 border-t border-gray-200">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="flex-1 px-4 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {loading ? "Creating..." : "Create User"}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };
 
 export default AddUserModal;

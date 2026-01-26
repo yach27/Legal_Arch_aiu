@@ -125,7 +125,7 @@ class AIProcessController extends Controller
                 // Use AI suggested folder name if available, otherwise use matched folder
                 'suggestedLocation' => $latestDocument->ai_suggested_folder ?: ($latestDocument->folder ? $latestDocument->folder->folder_name : null),
                 'suggestedCategory' => $latestDocument->folder ? $latestDocument->folder->folder_name : 'General Document',
-                'status' => ucfirst($latestDocument->status ?? 'Pending Review'),
+                'status' => $latestDocument->status ?? 'processing',
                 'physicalLocation' => $latestDocument->physical_location,
                 'folder_id' => $latestDocument->folder_id,
                 'remarks' => $latestDocument->remarks  // Processing status (e.g., "Processed into 9 chunks")
@@ -225,7 +225,7 @@ class AIProcessController extends Controller
                 'document' => [
                     'id' => $document->doc_id,
                     'title' => $document->title,
-                    'status' => 'active'
+                    'status' => $document->status // Return actual status (should be 'processing')
                 ]
             ]);
 

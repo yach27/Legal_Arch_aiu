@@ -48,6 +48,7 @@ class StaffController extends Controller
         // Get recent downloads (from last 24 hours)
         $recentDownloads = \App\Models\ActivityLog::with(['document', 'user'])
             ->where('activity_type', 'download')
+            ->where('user_id', $user->user_id)
             ->where('activity_time', '>=', now()->subDay())
             ->orderBy('activity_time', 'desc')
             ->limit(5)

@@ -7,6 +7,7 @@ import AccountTable from "./components/AccountTable";
 import AddUserModal from "./components/AddUserModal";
 import EditUserModal from "./components/EditUserModal";
 import DeleteConfirmModal from "./components/DeleteConfirmModal";
+import UserDocumentsModal from "./components/UserDocumentsModal";
 
 interface User {
     user_id: number;
@@ -44,6 +45,11 @@ const AccountManagement = () => {
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+    // Document Modal State
+    const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
+    const [userDocuments, setUserDocuments] = useState([]);
+    const [documentsLoading, setDocumentsLoading] = useState(false);
+
     // Fetch users on mount
     useEffect(() => {
         fetchUsers();
@@ -69,13 +75,13 @@ const AccountManagement = () => {
 
     // Filter users based on search and role
     const filteredUsers = users.filter(user => {
-        const matchesSearch = 
+        const matchesSearch =
             user.firstname.toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.lastname.toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.email.toLowerCase().includes(searchTerm.toLowerCase());
-        
+
         const matchesRole = selectedRole === 'all' || user.role === selectedRole;
-        
+
         return matchesSearch && matchesRole;
     });
 
@@ -124,13 +130,29 @@ const AccountManagement = () => {
     const handleDeactivateUser = async (user: User) => {
         try {
             const response = await axios.put(`/admin/account/users/${user.user_id}`, {
-                status: user.status === 'active' ? 'inactive' : 'active'
+                status: (user.status?.toLowerCase() === 'active') ? 'inactive' : 'active'
             });
             setUsers(users.map(u => u.user_id === user.user_id ? response.data.user : u));
             showToast(`User ${response.data.user.status === 'active' ? 'activated' : 'deactivated'} successfully`, 'success');
         } catch (error: any) {
             console.error('Error updating user status:', error);
             showToast(error.response?.data?.message || 'Failed to update user', 'error');
+            showToast(error.response?.data?.message || 'Failed to update user', 'error');
+        }
+    };
+
+    const handleViewUploads = async (user: User) => {
+        setSelectedUser(user);
+        setIsDocumentsModalOpen(true);
+        setDocumentsLoading(true);
+        try {
+            const response = await axios.get(`/admin/account/users/${user.user_id}/documents`);
+            setUserDocuments(response.data.documents);
+        } catch (error: any) {
+            console.error('Error fetching user documents:', error);
+            showToast('Failed to load user documents', 'error');
+        } finally {
+            setDocumentsLoading(false);
         }
     };
 
@@ -139,15 +161,14 @@ const AccountManagement = () => {
             <div className="max-w-7xl mx-auto">
                 <AccountHeader
                     totalUsers={users.length}
-                    activeUsers={users.filter(u => u.status === 'active').length}
+                    activeUsers={users.filter(u => u.status?.toLowerCase() === 'active').length}
                     onAddUserClick={() => setIsAddUserOpen(true)}
                 />
 
                 {/* Toast Notification */}
                 {toast && (
-                    <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 animate-fade-in ${
-                        toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
-                    }`}>
+                    <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 animate-fade-in ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+                        }`}>
                         {toast.message}
                     </div>
                 )}
@@ -185,6 +206,7 @@ const AccountManagement = () => {
                         setIsDeleteOpen(true);
                     }}
                     onDeactivate={handleDeactivateUser}
+                    onViewUploads={handleViewUploads}
                 />
 
                 {/* Modals */}
@@ -217,6 +239,19 @@ const AccountManagement = () => {
                             setSelectedUser(null);
                         }}
                         onConfirm={handleDeleteUser}
+                    />
+                )}
+
+                {isDocumentsModalOpen && selectedUser && (
+                    <UserDocumentsModal
+                        isOpen={isDocumentsModalOpen}
+                        onClose={() => {
+                            setIsDocumentsModalOpen(false);
+                            setSelectedUser(null);
+                        }}
+                        documents={userDocuments}
+                        user={selectedUser}
+                        loading={documentsLoading}
                     />
                 )}
             </div>

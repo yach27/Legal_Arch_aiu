@@ -16,62 +16,62 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     const handleLogout = async () => {
-    if (isLoggingOut) return;
+        if (isLoggingOut) return;
 
-    setIsLoggingOut(true);
+        setIsLoggingOut(true);
 
-    try {
-        // Get the stored token
-        const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
-        
-        const response = await fetch("/api/logout", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-                // Add the Bearer token for Sanctum authentication
-                ...(token && { "Authorization": `Bearer ${token}` }),
-                // You can remove CSRF token for API routes with Sanctum
-                // "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
-            },
-        });
+        try {
+            // Get the stored token
+            const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
 
-        const data = await response.json();
+            const response = await fetch("/api/logout", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    // Add the Bearer token for Sanctum authentication
+                    ...(token && { "Authorization": `Bearer ${token}` }),
+                    // You can remove CSRF token for API routes with Sanctum
+                    // "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+                },
+            });
 
-        if (data.success) {
-            // Clear all stored authentication data
-            sessionStorage.removeItem("currentUser");
-            sessionStorage.removeItem("adminLoaded");
-            sessionStorage.removeItem("tenantLoaded");
-            sessionStorage.removeItem("auth_token");
-            localStorage.removeItem("auth_token");
+            const data = await response.json();
 
-            console.log("Logout successful, redirecting to home...");
+            if (data.success) {
+                // Clear all stored authentication data
+                sessionStorage.removeItem("currentUser");
+                sessionStorage.removeItem("adminLoaded");
+                sessionStorage.removeItem("tenantLoaded");
+                sessionStorage.removeItem("auth_token");
+                localStorage.removeItem("auth_token");
 
-            // Call the onLogout prop if provided (for cleanup)
-            if (onLogout) {
-                onLogout();
+                console.log("Logout successful, redirecting to home...");
+
+                // Call the onLogout prop if provided (for cleanup)
+                if (onLogout) {
+                    onLogout();
+                }
+
+                // Redirect to home page
+                router.visit("/");
+            } else {
+                console.error("Logout failed:", data.message);
+                // Force redirect anyway and clear tokens
+                sessionStorage.removeItem("auth_token");
+                localStorage.removeItem("auth_token");
+                router.visit("/");
             }
-
-            // Redirect to home page
-            router.visit("/");
-        } else {
-            console.error("Logout failed:", data.message);
+        } catch (error) {
+            console.error("Logout error:", error);
             // Force redirect anyway and clear tokens
             sessionStorage.removeItem("auth_token");
             localStorage.removeItem("auth_token");
             router.visit("/");
+        } finally {
+            setIsLoggingOut(false);
         }
-    } catch (error) {
-        console.error("Logout error:", error);
-        // Force redirect anyway and clear tokens
-        sessionStorage.removeItem("auth_token");
-        localStorage.removeItem("auth_token");
-        router.visit("/");
-    } finally {
-        setIsLoggingOut(false);
-    }
-};
+    };
 
     // Conditional handlers to prevent actions during logout
     const handleViewProfile = () => {
@@ -88,14 +88,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
 
     return (
         <div
-            className={`absolute right-0 top-full rounded-xl w-64 p-2 mt-2 z-[10000] ${isLoggingOut ? "pointer-events-none opacity-75" : ""}`}
-            style={{
-                background: 'rgba(255, 255, 255, 0.5)',
-                backdropFilter: 'blur(25px)',
-                WebkitBackdropFilter: 'blur(25px)',
-                border: '1px solid rgba(255, 255, 255, 0.6)',
-                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)'
-            }}
+            className={`absolute right-0 top-full rounded-xl w-64 p-2 mt-2 z-[10000] bg-white shadow-xl border border-gray-100 ${isLoggingOut ? "pointer-events-none opacity-75" : ""}`}
         >
             {/* User Info Header */}
             <UserInfoHeader userData={userData} />
@@ -120,7 +113,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
                         icon={<LogoutIcon />}
                         label={isLoggingOut ? "Logging out..." : "Logout"}
                         onClick={handleLogout}
-                        // variant="danger"
+                    // variant="danger"
                     />
                 </li>
             </ul>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit2, Trash2, ToggleRight, ToggleLeft, AlertCircle } from "lucide-react";
+import { Edit2, Trash2, ToggleRight, ToggleLeft, AlertCircle, FileText } from "lucide-react";
 
 interface User {
     user_id: number;
@@ -23,6 +23,7 @@ interface AccountTableProps {
     onEdit: (user: User) => void;
     onDelete: (user: User) => void;
     onDeactivate: (user: User) => void;
+    onViewUploads: (user: User) => void;
 }
 
 const AccountTable: React.FC<AccountTableProps> = ({
@@ -31,13 +32,14 @@ const AccountTable: React.FC<AccountTableProps> = ({
     onEdit,
     onDelete,
     onDeactivate,
+    onViewUploads,
 }) => {
     const getStatusBadgeColor = (status?: string) => {
         switch (status) {
             case 'active':
                 return 'bg-green-100 text-green-800';
             case 'inactive':
-                return 'bg-red-100 text-red-800';
+                return 'bg-yellow-100 text-yellow-800';
             default:
                 return 'bg-gray-100 text-gray-800';
         }
@@ -166,6 +168,15 @@ const AccountTable: React.FC<AccountTableProps> = ({
                                 {/* Actions */}
                                 <td className="px-6 py-4">
                                     <div className="flex items-center justify-center gap-3">
+                                        {/* View Uploads Button */}
+                                        <button
+                                            onClick={() => onViewUploads(user)}
+                                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors duration-200"
+                                            title="View Uploads"
+                                        >
+                                            <FileText className="w-4 h-4" />
+                                        </button>
+
                                         {/* Edit Button */}
                                         <button
                                             onClick={() => onEdit(user)}
@@ -178,11 +189,10 @@ const AccountTable: React.FC<AccountTableProps> = ({
                                         {/* Toggle Status Button */}
                                         <button
                                             onClick={() => onDeactivate(user)}
-                                            className={`p-2 rounded-lg transition-colors duration-200 ${
-                                                user.status === 'active'
-                                                    ? 'text-yellow-600 hover:bg-yellow-100'
-                                                    : 'text-green-600 hover:bg-green-100'
-                                            }`}
+                                            className={`p-2 rounded-lg transition-colors duration-200 ${user.status === 'active'
+                                                ? 'text-green-600 hover:bg-green-100'
+                                                : 'text-yellow-600 hover:bg-yellow-100'
+                                                }`}
                                             title={user.status === 'active' ? 'Deactivate user' : 'Activate user'}
                                         >
                                             {user.status === 'active' ? (

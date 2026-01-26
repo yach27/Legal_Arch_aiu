@@ -4,7 +4,7 @@ import contactImg from "../../../images/contact/legal.png";
 
 const ContactLeft: React.FC = () => {
     return (
-        <div className="w-full lgl:w-[35%] h-full bg-white/40 backdrop-blur-xl p-4 lgl:p-8 rounded-3xl shadow-xl flex flex-col gap-8 justify-center border border-white/30">
+        <div className="w-full lgl:w-[35%] h-full bg-white p-4 lgl:p-8 rounded-[2rem] shadow-[0_4px_20px_rgb(0,0,0,0.03)] flex flex-col gap-8 justify-center border border-gray-100">
             <img
                 className="w-full h-full object-cover rounded-lg mb-2"
                 src={contactImg}
@@ -44,17 +44,17 @@ const ContactLeft: React.FC = () => {
                         href="https://www.facebook.com/profile.php?id=61577020230793"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center text-blue-600 hover:bg-blue-50 transition"
+                        className="w-12 h-12 rounded-xl border border-gray-100 flex items-center justify-center text-green-700 hover:bg-yellow-50 hover:border-yellow-200 transition-all duration-300 shadow-sm"
                     >
-                        <FaFacebookF size={18} />
+                        <FaFacebookF size={20} />
                     </a>
                     <a
                         href="https://mail.google.com/mail/u/0/#inbox?compose=CllgCJvrcjxmhScfGGSCcPKSMVHBPzkLrQZBxFQMXjQzGGkFHRSxBbwNqWGpXLQqRpTMWqCgrqV"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center text-blue-600 hover:bg-blue-50 transition"
+                        className="w-12 h-12 rounded-xl border border-gray-100 flex items-center justify-center text-green-700 hover:bg-yellow-50 hover:border-yellow-200 transition-all duration-300 shadow-sm"
                     >
-                        <FaEnvelope size={18} />
+                        <FaEnvelope size={20} />
                     </a>
                 </div>
             </div>

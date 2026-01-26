@@ -129,6 +129,8 @@ const DeleteDocumentDialog: React.FC<DeleteDocumentDialogProps> = ({
               id="confirmText"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
+              // Stop propagation of key events so parent listeners (like row click) don't trigger
+              onKeyDown={(e) => e.stopPropagation()}
               disabled={isDeleting}
               className="w-full px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="Type 'delete' to confirm"

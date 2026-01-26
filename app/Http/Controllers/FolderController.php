@@ -90,8 +90,8 @@ class FolderController extends Controller
     {
         $folders = Folder::with('creator')
             ->select('folder_id', 'folder_name', 'folder_path', 'folder_type', 'parent_folder_id', 'created_by', 'created_at', 'updated_at')
-            ->where('folder_name', 'LIKE', "%{$term}%")
-            ->orWhere('folder_path', 'LIKE', "%{$term}%")
+            ->where(DB::raw('LOWER(folder_name)'), 'LIKE', '%' . strtolower($term) . '%')
+            ->orWhere(DB::raw('LOWER(folder_path)'), 'LIKE', '%' . strtolower($term) . '%')
             ->orderBy('updated_at', 'desc')
             ->get();
 
